@@ -1622,52 +1622,135 @@ def inject_styles() -> None:
     st.markdown(
         """
         <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Bebas+Neue&display=swap');
+
+        /* ── Keyframe animations ── */
+        @keyframes gradientShift {
+            0%   { background-position: 0% 50%; }
+            50%  { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 0 10px 2px rgba(255,215,0,0.3); }
+            50%       { box-shadow: 0 0 28px 8px rgba(255,215,0,0.7); }
+        }
+        @keyframes pulseDot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50%       { opacity: 0.4; transform: scale(0.7); }
+        }
+        @keyframes shimmer {
+            0%   { background-position: -200% center; }
+            100% { background-position: 200% center; }
+        }
+        @keyframes floatBall {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            33%       { transform: translateY(-8px) rotate(120deg); }
+            66%       { transform: translateY(-4px) rotate(240deg); }
+        }
+        @keyframes scanLine {
+            0%   { top: -4px; }
+            100% { top: 100%; }
+        }
+        @keyframes fadeSlideIn {
+            from { opacity: 0; transform: translateY(12px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes borderPulse {
+            0%, 100% { border-color: rgba(255,215,0,0.2); }
+            50%       { border-color: rgba(255,215,0,0.6); }
+        }
 
         /* ── Global reset & base ── */
         html, body, [class*="css"] {
             font-family: 'Inter', sans-serif !important;
         }
+
+        /* ── Animated deep-space background ── */
         .stApp {
-            background: linear-gradient(160deg, #050d1f 0%, #0a1628 40%, #0d1f3c 70%, #071020 100%) !important;
-            background-attachment: fixed !important;
+            background: linear-gradient(
+                -45deg,
+                #020b18, #041424, #071e38, #050d1f,
+                #081a30, #030e1e, #0d1f3c, #020b18
+            ) !important;
+            background-size: 400% 400% !important;
+            animation: gradientShift 18s ease infinite !important;
         }
 
-        /* ── Decorative stadium grid overlay ── */
+        /* ── Pitch grid overlay ── */
         .stApp::before {
             content: '';
             position: fixed;
             inset: 0;
             background-image:
-                linear-gradient(rgba(255,215,0,0.015) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255,215,0,0.015) 1px, transparent 1px);
-            background-size: 60px 60px;
+                linear-gradient(rgba(255,215,0,0.018) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,215,0,0.018) 1px, transparent 1px),
+                radial-gradient(ellipse at 50% 50%, rgba(16,185,129,0.04) 0%, transparent 60%);
+            background-size: 56px 56px, 56px 56px, 100% 100%;
             pointer-events: none;
             z-index: 0;
         }
 
+        /* ── Moving scan line on top ── */
+        .stApp::after {
+            content: '';
+            position: fixed;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, rgba(255,215,0,0.18), transparent);
+            animation: scanLine 6s linear infinite;
+            pointer-events: none;
+            z-index: 1;
+        }
+
         /* ── Sidebar ── */
         [data-testid="stSidebar"] {
-            background: linear-gradient(180deg, #020817 0%, #0a1628 100%) !important;
-            border-right: 1px solid rgba(255,215,0,0.15) !important;
+            background: linear-gradient(180deg,
+                #010810 0%,
+                #020f1e 40%,
+                #011020 100%
+            ) !important;
+            border-right: 1px solid rgba(255,215,0,0.18) !important;
+            box-shadow: 4px 0 30px rgba(0,0,0,0.5) !important;
         }
         [data-testid="stSidebar"] * {
             color: #e2e8f0 !important;
         }
-        [data-testid="stSidebar"] .stMetric {
-            background: rgba(255,215,0,0.04);
-            border: 1px solid rgba(255,215,0,0.12);
-            border-radius: 10px;
-            padding: 8px 14px;
-            margin-bottom: 8px !important;
+
+        /* ── Sidebar radio as pill-nav ── */
+        [data-testid="stSidebar"] [data-testid="stRadio"] > div {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 10px !important;
+            padding: 4px 0 !important;
         }
-        [data-testid="stSidebar"] [data-testid="stMetricValue"] {
+        [data-testid="stSidebar"] [data-baseweb="radio"] {
+            background: rgba(255,255,255,0.04) !important;
+            border: 1px solid rgba(255,255,255,0.08) !important;
+            border-radius: 12px !important;
+            padding: 12px 16px !important;
+            transition: all 0.25s ease !important;
+            cursor: pointer !important;
+        }
+        [data-testid="stSidebar"] [data-baseweb="radio"]:hover {
+            background: rgba(251,191,36,0.08) !important;
+            border-color: rgba(251,191,36,0.35) !important;
+        }
+        [data-testid="stSidebar"] [data-baseweb="radio"][aria-checked="true"] {
+            background: linear-gradient(135deg,
+                rgba(251,191,36,0.15) 0%,
+                rgba(245,158,11,0.08) 100%
+            ) !important;
+            border-color: rgba(251,191,36,0.5) !important;
+            animation: borderPulse 2.5s ease infinite !important;
+        }
+        [data-testid="stSidebar"] [data-baseweb="radio"] span {
+            font-size: 14px !important;
+            font-weight: 600 !important;
+            letter-spacing: 0.02em !important;
+        }
+        [data-testid="stSidebar"] [aria-checked="true"] span {
             color: #fbbf24 !important;
-            font-weight: 700 !important;
-        }
-        [data-testid="stSidebar"] .stRadio label {
-            color: #94a3b8 !important;
-            font-size: 13px !important;
         }
 
         /* ── Main content text ── */
@@ -1676,16 +1759,26 @@ def inject_styles() -> None:
         }
         label, .stSelectbox label, .stSlider label, .stNumberInput label {
             color: #94a3b8 !important;
-            font-size: 12px !important;
-            font-weight: 600 !important;
-            letter-spacing: 0.05em !important;
+            font-size: 11px !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.08em !important;
             text-transform: uppercase !important;
         }
 
         /* ── Selectboxes & inputs ── */
-        .stSelectbox > div > div, .stNumberInput > div > div > input {
-            background: rgba(15, 23, 42, 0.8) !important;
-            border: 1px solid rgba(99, 179, 237, 0.3) !important;
+        .stSelectbox > div > div {
+            background: rgba(10, 18, 35, 0.9) !important;
+            border: 1px solid rgba(99,179,237,0.25) !important;
+            color: #e2e8f0 !important;
+            border-radius: 10px !important;
+            transition: border-color 0.2s ease !important;
+        }
+        .stSelectbox > div > div:hover {
+            border-color: rgba(251,191,36,0.4) !important;
+        }
+        .stNumberInput > div > div > input {
+            background: rgba(10, 18, 35, 0.9) !important;
+            border: 1px solid rgba(99,179,237,0.25) !important;
             color: #e2e8f0 !important;
             border-radius: 10px !important;
         }
@@ -1693,95 +1786,150 @@ def inject_styles() -> None:
         /* ── Primary button ── */
         .stButton > button[kind="primary"] {
             background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%) !important;
-            color: #0a0a0a !important;
-            font-weight: 800 !important;
-            font-size: 15px !important;
+            background-size: 200% auto !important;
+            color: #050d1f !important;
+            font-weight: 900 !important;
+            font-size: 14px !important;
             border: none !important;
             border-radius: 12px !important;
             padding: 14px 28px !important;
-            letter-spacing: 0.04em !important;
-            box-shadow: 0 4px 20px rgba(251,191,36,0.4) !important;
-            transition: all 0.2s ease !important;
+            letter-spacing: 0.06em !important;
+            text-transform: uppercase !important;
+            box-shadow: 0 4px 20px rgba(251,191,36,0.35), 0 0 0 0 rgba(251,191,36,0) !important;
+            transition: all 0.25s ease !important;
+            animation: pulseGlow 3s ease-in-out infinite !important;
         }
         .stButton > button[kind="primary"]:hover {
-            transform: translateY(-2px) !important;
-            box-shadow: 0 8px 30px rgba(251,191,36,0.6) !important;
+            transform: translateY(-3px) scale(1.01) !important;
+            box-shadow: 0 10px 35px rgba(251,191,36,0.65) !important;
+        }
+        .stButton > button[kind="primary"]:active {
+            transform: translateY(0) scale(0.99) !important;
         }
         .stButton > button:not([kind="primary"]) {
-            background: rgba(30, 58, 138, 0.5) !important;
+            background: rgba(15, 30, 70, 0.6) !important;
             color: #93c5fd !important;
-            border: 1px solid rgba(99, 179, 237, 0.3) !important;
+            border: 1px solid rgba(99,179,237,0.25) !important;
             border-radius: 10px !important;
+            transition: all 0.2s ease !important;
+        }
+        .stButton > button:not([kind="primary"]):hover {
+            background: rgba(30,58,138,0.5) !important;
+            border-color: rgba(99,179,237,0.5) !important;
         }
 
         /* ── Tabs ── */
         .stTabs [data-baseweb="tab-list"] {
-            background: rgba(15, 23, 42, 0.6) !important;
-            border-radius: 12px !important;
-            padding: 4px !important;
-            border: 1px solid rgba(255,215,0,0.1) !important;
+            background: rgba(5, 13, 31, 0.8) !important;
+            border-radius: 14px !important;
+            padding: 5px !important;
+            border: 1px solid rgba(255,215,0,0.12) !important;
+            gap: 4px !important;
         }
         .stTabs [data-baseweb="tab"] {
-            color: #94a3b8 !important;
-            border-radius: 8px !important;
+            color: #64748b !important;
+            border-radius: 10px !important;
+            font-weight: 600 !important;
+            transition: all 0.2s ease !important;
         }
         .stTabs [aria-selected="true"] {
-            background: rgba(251,191,36,0.15) !important;
+            background: linear-gradient(135deg,
+                rgba(251,191,36,0.18) 0%,
+                rgba(245,158,11,0.10) 100%
+            ) !important;
             color: #fbbf24 !important;
+            box-shadow: inset 0 0 0 1px rgba(251,191,36,0.3) !important;
         }
 
         /* ── Dataframe ── */
         [data-testid="stDataFrame"] {
-            border: 1px solid rgba(255,215,0,0.1) !important;
-            border-radius: 12px !important;
+            border: 1px solid rgba(255,215,0,0.12) !important;
+            border-radius: 14px !important;
             overflow: hidden !important;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.3) !important;
         }
 
         /* ── Expander ── */
         .streamlit-expanderHeader {
-            background: rgba(15, 23, 42, 0.7) !important;
-            border: 1px solid rgba(99,179,237,0.2) !important;
+            background: rgba(10, 18, 35, 0.7) !important;
+            border: 1px solid rgba(99,179,237,0.18) !important;
             border-radius: 10px !important;
             color: #93c5fd !important;
+            transition: all 0.2s ease !important;
+        }
+        .streamlit-expanderHeader:hover {
+            border-color: rgba(251,191,36,0.35) !important;
+            background: rgba(251,191,36,0.04) !important;
         }
 
-        /* ── Info / Warning / Error boxes ── */
+        /* ── Alert boxes ── */
         .stAlert {
             border-radius: 12px !important;
-            border: none !important;
+            border-left: 3px solid rgba(251,191,36,0.6) !important;
+            background: rgba(251,191,36,0.05) !important;
         }
 
         /* ── Slider ── */
-        [data-testid="stSlider"] .st-bd {
-            background: rgba(251,191,36,0.3) !important;
+        [data-testid="stSlider"] > div > div > div > div {
+            background: linear-gradient(90deg,
+                #fbbf24, #f59e0b
+            ) !important;
         }
 
-        /* ── Metrics (main area) ── */
+        /* ── Metrics ── */
         [data-testid="metric-container"] {
-            background: rgba(255,255,255,0.03) !important;
+            background: linear-gradient(135deg,
+                rgba(255,255,255,0.03) 0%,
+                rgba(255,255,255,0.01) 100%
+            ) !important;
             border: 1px solid rgba(255,255,255,0.07) !important;
-            border-radius: 14px !important;
-            padding: 16px !important;
+            border-radius: 16px !important;
+            padding: 18px !important;
+            backdrop-filter: blur(8px) !important;
+            transition: transform 0.2s ease, border-color 0.2s ease !important;
+        }
+        [data-testid="metric-container"]:hover {
+            transform: translateY(-2px) !important;
+            border-color: rgba(251,191,36,0.2) !important;
         }
         [data-testid="stMetricValue"] {
             color: #fbbf24 !important;
-            font-weight: 800 !important;
-            font-size: 24px !important;
+            font-weight: 900 !important;
+            font-size: 26px !important;
+            font-family: 'Bebas Neue', sans-serif !important;
+            letter-spacing: 0.04em !important;
         }
         [data-testid="stMetricLabel"] {
-            color: #94a3b8 !important;
-            font-size: 11px !important;
+            color: #64748b !important;
+            font-size: 10px !important;
             text-transform: uppercase !important;
-            letter-spacing: 0.06em !important;
+            letter-spacing: 0.1em !important;
+            font-weight: 700 !important;
         }
         [data-testid="stMetricDelta"] {
             color: #10b981 !important;
-            font-weight: 600 !important;
+            font-weight: 700 !important;
         }
 
-        /* ── Radio buttons ── */
-        .stRadio [data-baseweb="radio"] span {
-            color: #cbd5e1 !important;
+        /* ── Radio buttons (main area) ── */
+        [data-testid="stRadio"] > div {
+            gap: 8px !important;
+        }
+        [data-baseweb="radio"] {
+            background: rgba(15, 23, 42, 0.6) !important;
+            border-radius: 10px !important;
+            padding: 8px 14px !important;
+            border: 1px solid rgba(255,255,255,0.06) !important;
+            transition: all 0.2s ease !important;
+        }
+        [data-baseweb="radio"]:hover {
+            border-color: rgba(251,191,36,0.3) !important;
+            background: rgba(251,191,36,0.05) !important;
+        }
+
+        /* ── Fade-in animation for main content ── */
+        [data-testid="stVerticalBlock"] > div {
+            animation: fadeSlideIn 0.4s ease both;
         }
         </style>
         """,
@@ -1789,94 +1937,295 @@ def inject_styles() -> None:
     )
 
 
+def render_sidebar_logo() -> None:
+    """Render the FIFA 2026 branding panel inside the sidebar."""
+
+    st.sidebar.markdown(
+        """
+        <div style="
+            text-align:center;
+            padding:28px 16px 20px 16px;
+            border-bottom:1px solid rgba(255,215,0,0.12);
+            margin-bottom:20px;
+        ">
+            <div style="
+                display:inline-flex;
+                align-items:center;
+                justify-content:center;
+                width:64px;height:64px;
+                background:linear-gradient(135deg,#fbbf24,#f59e0b);
+                border-radius:16px;
+                box-shadow:0 0 24px rgba(251,191,36,0.5);
+                font-size:32px;
+                margin-bottom:12px;
+            ">⚽</div>
+            <div style="
+                font-family:'Bebas Neue','Inter',sans-serif;
+                font-size:22px;
+                letter-spacing:0.18em;
+                color:#fbbf24;
+                line-height:1;
+            ">FIFA 2026</div>
+            <div style="
+                font-size:10px;
+                font-weight:700;
+                letter-spacing:0.12em;
+                text-transform:uppercase;
+                color:#475569;
+                margin-top:4px;
+                font-family:'Inter',sans-serif;
+            ">Match Predictor</div>
+            <div style="
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                gap:6px;
+                margin-top:10px;
+            ">
+                <div style="
+                    width:7px;height:7px;
+                    background:#10b981;
+                    border-radius:50%;
+                    animation:pulseDot 1.8s ease-in-out infinite;
+                "></div>
+                <span style="
+                    font-size:10px;font-weight:600;
+                    color:#10b981;letter-spacing:0.06em;
+                    font-family:'Inter',sans-serif;
+                ">LIVE ENGINE</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_hero_header() -> None:
-    """Render a premium hero header for the app."""
+    """Render a premium animated hero header for the app."""
 
     hero_html = dedent(
         """
         <div style="
-            background: linear-gradient(135deg, #050d1f 0%, #0d2137 50%, #071020 100%);
-            border: 1px solid rgba(255,215,0,0.2);
-            border-radius: 20px;
-            padding: 32px 36px;
-            margin-bottom: 24px;
+            background: linear-gradient(135deg, #020c1b 0%, #071e38 45%, #050f20 100%);
+            border: 1px solid rgba(255,215,0,0.22);
+            border-radius: 24px;
+            padding: 36px 40px;
+            margin-bottom: 28px;
             position: relative;
             overflow: hidden;
-            box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+            box-shadow:
+                0 8px 48px rgba(0,0,0,0.7),
+                inset 0 1px 0 rgba(255,255,255,0.05);
         ">
-            <!-- Glowing orb decoration -->
+            <!-- Animated orb top-right -->
             <div style="
-                position:absolute;top:-40px;right:-40px;
-                width:200px;height:200px;
-                background:radial-gradient(circle, rgba(255,215,0,0.12) 0%, transparent 70%);
+                position:absolute;top:-60px;right:-60px;
+                width:260px;height:260px;
+                background:radial-gradient(circle,
+                    rgba(251,191,36,0.14) 0%,
+                    rgba(245,158,11,0.06) 40%,
+                    transparent 70%);
                 border-radius:50%;
                 pointer-events:none;
             "></div>
+            <!-- Animated orb bottom-left -->
             <div style="
-                position:absolute;bottom:-60px;left:20%;
-                width:300px;height:300px;
-                background:radial-gradient(circle, rgba(59,130,246,0.06) 0%, transparent 70%);
+                position:absolute;bottom:-80px;left:10%;
+                width:340px;height:340px;
+                background:radial-gradient(circle,
+                    rgba(16,185,129,0.06) 0%,
+                    rgba(59,130,246,0.04) 40%,
+                    transparent 70%);
                 border-radius:50%;
                 pointer-events:none;
+            "></div>
+            <!-- Decorative corner bracket TL -->
+            <div style="
+                position:absolute;top:16px;left:16px;
+                width:24px;height:24px;
+                border-top:2px solid rgba(255,215,0,0.5);
+                border-left:2px solid rgba(255,215,0,0.5);
+                border-radius:3px 0 0 0;
+            "></div>
+            <!-- Decorative corner bracket BR -->
+            <div style="
+                position:absolute;bottom:16px;right:16px;
+                width:24px;height:24px;
+                border-bottom:2px solid rgba(255,215,0,0.5);
+                border-right:2px solid rgba(255,215,0,0.5);
+                border-radius:0 0 3px 0;
             "></div>
 
-            <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px;">
+            <div style="display:flex;align-items:flex-start;gap:20px;">
+                <!-- Animated ball -->
                 <div style="
-                    font-size:48px;
-                    filter:drop-shadow(0 0 12px rgba(255,215,0,0.6));
+                    font-size:56px;
+                    filter:drop-shadow(0 0 16px rgba(255,215,0,0.55));
+                    animation:floatBall 5s ease-in-out infinite;
+                    flex-shrink:0;
+                    margin-top:4px;
                 ">⚽</div>
-                <div>
+
+                <div style="flex:1;">
+                    <!-- Label -->
                     <div style="
-                        font-size:11px;font-weight:700;
-                        letter-spacing:0.2em;text-transform:uppercase;
-                        color:#fbbf24;margin-bottom:4px;
-                        font-family:'Inter',sans-serif;
-                    ">FIFA</div>
+                        display:inline-flex;align-items:center;gap:6px;
+                        background:rgba(251,191,36,0.12);
+                        border:1px solid rgba(251,191,36,0.3);
+                        border-radius:999px;
+                        padding:3px 12px;
+                        margin-bottom:10px;
+                    ">
+                        <div style="
+                            width:6px;height:6px;background:#fbbf24;
+                            border-radius:50%;
+                            animation:pulseDot 1.8s ease-in-out infinite;
+                        "></div>
+                        <span style="
+                            font-size:10px;font-weight:700;
+                            letter-spacing:0.16em;text-transform:uppercase;
+                            color:#fbbf24;font-family:'Inter',sans-serif;
+                        ">FIFA World Cup 2026</span>
+                    </div>
+
+                    <!-- Main title with shimmer -->
                     <h1 style="
-                        margin:0;padding:0;
-                        font-size:clamp(22px, 3.5vw, 36px);
+                        margin:0 0 8px 0;padding:0;
+                        font-size:clamp(26px,4vw,42px);
                         font-weight:900;
-                        line-height:1.1;
+                        line-height:1.05;
+                        font-family:'Bebas Neue','Inter',sans-serif;
+                        letter-spacing:0.04em;
+                        background: linear-gradient(
+                            90deg,
+                            #ffffff 0%,
+                            #fbbf24 30%,
+                            #f59e0b 50%,
+                            #fbbf24 70%,
+                            #ffffff 100%
+                        );
+                        background-size: 200% auto;
+                        -webkit-background-clip: text;
+                        -webkit-text-fill-color: transparent;
+                        background-clip: text;
+                        animation: shimmer 4s linear infinite;
+                    ">Match Predictor &amp; Tournament Simulator</h1>
+
+                    <p style="
+                        margin:0 0 18px 0;color:#64748b;
+                        font-size:13px;line-height:1.65;
+                        max-width:580px;
                         font-family:'Inter',sans-serif;
-                        background:linear-gradient(135deg,#ffffff 0%,#fbbf24 60%,#f59e0b 100%);
-                        -webkit-background-clip:text;
-                        -webkit-text-fill-color:transparent;
-                        background-clip:text;
-                    ">World Cup 2026<br>Match Predictor</h1>
+                    ">
+                        Motor predictivo basado en
+                        <span style="color:#93c5fd;font-weight:600;">Gradient Boosting</span>
+                        entrenado con resultados internacionales históricos.
+                        Ratings <span style="color:#6ee7b7;font-weight:600;">ELO</span>,
+                        forma reciente y contexto de sede.
+                        Simula torneos completos con
+                        <span style="color:#c4b5fd;font-weight:600;">Monte Carlo</span>.
+                    </p>
+
+                    <!-- Stat pills row -->
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                        <div style="
+                            background:rgba(251,191,36,0.1);
+                            border:1px solid rgba(251,191,36,0.28);
+                            border-radius:10px;
+                            padding:8px 14px;
+                            text-align:center;
+                        ">
+                            <div style="font-size:18px;font-weight:900;color:#fbbf24;
+                                font-family:'Bebas Neue',sans-serif;line-height:1;">48</div>
+                            <div style="font-size:9px;font-weight:700;
+                                text-transform:uppercase;letter-spacing:0.08em;
+                                color:#78716c;margin-top:2px;font-family:'Inter',sans-serif;">Equipos</div>
+                        </div>
+                        <div style="
+                            background:rgba(59,130,246,0.1);
+                            border:1px solid rgba(59,130,246,0.28);
+                            border-radius:10px;
+                            padding:8px 14px;
+                            text-align:center;
+                        ">
+                            <div style="font-size:18px;font-weight:900;color:#60a5fa;
+                                font-family:'Bebas Neue',sans-serif;line-height:1;">104</div>
+                            <div style="font-size:9px;font-weight:700;
+                                text-transform:uppercase;letter-spacing:0.08em;
+                                color:#78716c;margin-top:2px;font-family:'Inter',sans-serif;">Partidos</div>
+                        </div>
+                        <div style="
+                            background:rgba(16,185,129,0.1);
+                            border:1px solid rgba(16,185,129,0.28);
+                            border-radius:10px;
+                            padding:8px 14px;
+                            text-align:center;
+                        ">
+                            <div style="font-size:18px;font-weight:900;color:#34d399;
+                                font-family:'Bebas Neue',sans-serif;line-height:1;">3</div>
+                            <div style="font-size:9px;font-weight:700;
+                                text-transform:uppercase;letter-spacing:0.08em;
+                                color:#78716c;margin-top:2px;font-family:'Inter',sans-serif;">Sedes</div>
+                        </div>
+                        <div style="
+                            background:rgba(139,92,246,0.1);
+                            border:1px solid rgba(139,92,246,0.28);
+                            border-radius:10px;
+                            padding:8px 14px;
+                            text-align:center;
+                        ">
+                            <div style="font-size:18px;font-weight:900;color:#a78bfa;
+                                font-family:'Bebas Neue',sans-serif;line-height:1;">ELO</div>
+                            <div style="font-size:9px;font-weight:700;
+                                text-transform:uppercase;letter-spacing:0.08em;
+                                color:#78716c;margin-top:2px;font-family:'Inter',sans-serif;">Rating</div>
+                        </div>
+                        <div style="
+                            background:rgba(236,72,153,0.08);
+                            border:1px solid rgba(236,72,153,0.22);
+                            border-radius:10px;
+                            padding:8px 14px;
+                            text-align:center;
+                        ">
+                            <div style="font-size:18px;font-weight:900;color:#f472b6;
+                                font-family:'Bebas Neue',sans-serif;line-height:1;">MC</div>
+                            <div style="font-size:9px;font-weight:700;
+                                text-transform:uppercase;letter-spacing:0.08em;
+                                color:#78716c;margin-top:2px;font-family:'Inter',sans-serif;">Monte Carlo</div>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <p style="
-                margin:0;color:#94a3b8;
-                font-size:14px;line-height:1.6;
-                max-width:600px;
-                font-family:'Inter',sans-serif;
-            ">
-                Powered by a <strong style="color:#93c5fd;">Gradient Boosting</strong> model trained on
-                historical international results — featuring ELO ratings, recent form, and venue-context features.
-                Simulate full tournaments with Monte Carlo analysis.
-            </p>
 
+            <!-- Host nations footer bar -->
             <div style="
-                display:flex;gap:12px;margin-top:20px;flex-wrap:wrap;
+                display:flex;align-items:center;gap:10px;
+                margin-top:24px;
+                padding-top:18px;
+                border-top:1px solid rgba(255,255,255,0.05);
             ">
                 <span style="
-                    background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.3);
-                    color:#fbbf24;padding:4px 12px;border-radius:999px;
-                    font-size:11px;font-weight:600;letter-spacing:0.06em;
-                    font-family:'Inter',sans-serif;
-                ">🇨🇦 Canada &nbsp;·&nbsp; 🇲🇽 Mexico &nbsp;·&nbsp; 🇺🇸 USA</span>
-                <span style="
-                    background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.3);
-                    color:#93c5fd;padding:4px 12px;border-radius:999px;
-                    font-size:11px;font-weight:600;letter-spacing:0.06em;
-                    font-family:'Inter',sans-serif;
-                ">48 Teams &nbsp;·&nbsp; 104 Matches</span>
-                <span style="
-                    background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.3);
-                    color:#6ee7b7;padding:4px 12px;border-radius:999px;
-                    font-size:11px;font-weight:600;letter-spacing:0.06em;
-                    font-family:'Inter',sans-serif;
-                ">Live Data Engine</span>
+                    font-size:10px;font-weight:700;
+                    letter-spacing:0.12em;text-transform:uppercase;
+                    color:#475569;font-family:'Inter',sans-serif;
+                    flex-shrink:0;
+                ">Sedes:</span>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <span style="
+                        font-size:12px;font-weight:600;
+                        color:#94a3b8;font-family:'Inter',sans-serif;
+                    ">🇨🇦 Canada</span>
+                    <span style="color:#334155;font-size:12px;">·</span>
+                    <span style="
+                        font-size:12px;font-weight:600;
+                        color:#94a3b8;font-family:'Inter',sans-serif;
+                    ">🇲🇽 México</span>
+                    <span style="color:#334155;font-size:12px;">·</span>
+                    <span style="
+                        font-size:12px;font-weight:600;
+                        color:#94a3b8;font-family:'Inter',sans-serif;
+                    ">🇺🇸 Estados Unidos</span>
+                </div>
             </div>
         </div>
         """
@@ -1894,6 +2243,7 @@ def main() -> None:
     )
 
     inject_styles()
+    render_sidebar_logo()
     render_hero_header()
 
     try:
