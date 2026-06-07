@@ -1908,36 +1908,15 @@ def main() -> None:
     team_lookup = build_team_lookup(available_teams)
     custom_team_options = build_custom_team_options(available_teams)
 
-    st.sidebar.markdown(
-        """
-        <div style="
-            background:linear-gradient(135deg,rgba(251,191,36,0.1) 0%,rgba(245,158,11,0.05) 100%);
-            border:1px solid rgba(251,191,36,0.25);
-            border-radius:12px;padding:14px 16px;margin-bottom:16px;
-        ">
-            <div style="font-size:10px;letter-spacing:0.15em;text-transform:uppercase;color:#fbbf24;font-weight:700;margin-bottom:2px;font-family:'Inter',sans-serif;">AI Model</div>
-            <div style="font-size:16px;font-weight:800;color:#f1f5f9;font-family:'Inter',sans-serif;">Model Snapshot</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.sidebar.metric("Historical matches", f"{int(metrics['matches']):,}")
-    st.sidebar.metric("Teams tracked", f"{int(metrics['teams']):,}")
-    st.sidebar.metric("Validation accuracy", f"{metrics['accuracy']:.1%}")
-    st.sidebar.metric("Validation log-loss", f"{metrics['log_loss']:.3f}")
-    st.sidebar.markdown("---")
-    st.sidebar.caption(f"📊 Results source: {results_source}")
-    st.sidebar.caption(f"📅 Fixture source: {WORLD_CUP_2026_URL}")
-
     display_lookup = build_display_lookup()
     group_stage_matches = prepare_group_stage_matches(
         world_cup_schedule,
         display_lookup,
     )
-    st.sidebar.markdown("---")
     app_view = st.sidebar.radio(
-        "🧭 App view",
+        "🧭 Vista",
         ("Match Predictor", "Tournament Simulation Engine"),
+        label_visibility="collapsed",
     )
 
     if app_view == "Match Predictor":
