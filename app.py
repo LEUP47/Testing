@@ -1658,6 +1658,7 @@ def render_plotly_bracket(bracket_data: Dict[str, List[str]]) -> None:
         margin={"l": 20, "r": 20, "t": 80, "b": 20},
         plot_bgcolor="#0f172a",
         paper_bgcolor="#0f172a",
+        dragmode="pan",
         shapes=shapes,
         annotations=annotations,
         xaxis={
@@ -1691,13 +1692,26 @@ def render_plotly_bracket(bracket_data: Dict[str, List[str]]) -> None:
         },
     )
 
+    chart_config = {
+        "scrollZoom": False,
+        "doubleClick": False,
+        "displayModeBar": True,
+        "modeBarButtonsToRemove": [
+            "zoom2d",
+            "zoomIn2d",
+            "zoomOut2d",
+            "autoScale2d",
+            "resetScale2d",
+        ],
+    }
+
     st.markdown("<hr style='border-color:rgba(255,215,0,0.15);margin:24px 0;'>", unsafe_allow_html=True)
     st.markdown(
         "<h3 style='color:#f1f5f9;font-family:Inter,sans-serif;font-weight:800;font-size:18px;'>🗺️ Interactive Knockout Bracket</h3>"
         "<p style='color:#64748b;font-size:13px;margin-top:2px;font-family:Inter,sans-serif;'>A single tournament path generated from the selected random seed.</p>",
         unsafe_allow_html=True,
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, config=chart_config)
 
 
 def render_probability_card(label: str, probability: float) -> None:
