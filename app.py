@@ -1872,10 +1872,7 @@ def inject_styles() -> None:
             33%       { transform: translateY(-8px) rotate(120deg); }
             66%       { transform: translateY(-4px) rotate(240deg); }
         }
-        @keyframes scanLine {
-            0%   { top: -4px; }
-            100% { top: 100%; }
-        }
+        @keyframes scanLine { from {} to {} } /* disabled */
         @keyframes fadeSlideIn {
             from { opacity: 0; transform: translateY(12px); }
             to   { opacity: 1; transform: translateY(0); }
@@ -1890,53 +1887,42 @@ def inject_styles() -> None:
             font-family: 'Inter', sans-serif !important;
         }
 
-        /* ── Animated deep-space background ── */
+        /* ── Animated background (calmer, lighter palette) ── */
         .stApp {
             background: linear-gradient(
                 -45deg,
-                #020b18, #041424, #071e38, #050d1f,
-                #081a30, #030e1e, #0d1f3c, #020b18
+                #0f1e35, #152840, #1a2f48, #122338,
+                #162d45, #0f1e35, #1a3050, #122338
             ) !important;
             background-size: 400% 400% !important;
-            animation: gradientShift 18s ease infinite !important;
+            animation: gradientShift 22s ease infinite !important;
         }
 
-        /* ── Pitch grid overlay ── */
+        /* ── Pitch grid overlay (more visible on lighter bg) ── */
         .stApp::before {
             content: '';
             position: fixed;
             inset: 0;
             background-image:
-                linear-gradient(rgba(255,215,0,0.018) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255,215,0,0.018) 1px, transparent 1px),
-                radial-gradient(ellipse at 50% 50%, rgba(16,185,129,0.04) 0%, transparent 60%);
+                linear-gradient(rgba(255,215,0,0.025) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,215,0,0.025) 1px, transparent 1px),
+                radial-gradient(ellipse at 50% 50%, rgba(16,185,129,0.05) 0%, transparent 60%);
             background-size: 56px 56px, 56px 56px, 100% 100%;
             pointer-events: none;
             z-index: 0;
         }
 
-        /* ── Moving scan line on top ── */
-        .stApp::after {
-            content: '';
-            position: fixed;
-            left: 0;
-            width: 100%;
-            height: 2px;
-            background: linear-gradient(90deg, transparent, rgba(255,215,0,0.18), transparent);
-            animation: scanLine 6s linear infinite;
-            pointer-events: none;
-            z-index: 1;
-        }
+
 
         /* ── Sidebar ── */
         [data-testid="stSidebar"] {
             background: linear-gradient(180deg,
-                #010810 0%,
-                #020f1e 40%,
-                #011020 100%
+                #0e1f38 0%,
+                #122844 40%,
+                #0f2040 100%
             ) !important;
-            border-right: 1px solid rgba(255,215,0,0.18) !important;
-            box-shadow: 4px 0 30px rgba(0,0,0,0.5) !important;
+            border-right: 1px solid rgba(255,215,0,0.2) !important;
+            box-shadow: 4px 0 24px rgba(0,0,0,0.3) !important;
         }
         [data-testid="stSidebar"] * {
             color: #e2e8f0 !important;
@@ -1992,18 +1978,18 @@ def inject_styles() -> None:
 
         /* ── Selectboxes & inputs ── */
         .stSelectbox > div > div {
-            background: rgba(10, 18, 35, 0.9) !important;
-            border: 1px solid rgba(99,179,237,0.25) !important;
+            background: rgba(20, 38, 68, 0.85) !important;
+            border: 1px solid rgba(99,179,237,0.3) !important;
             color: #e2e8f0 !important;
             border-radius: 10px !important;
             transition: border-color 0.2s ease !important;
         }
         .stSelectbox > div > div:hover {
-            border-color: rgba(251,191,36,0.4) !important;
+            border-color: rgba(251,191,36,0.45) !important;
         }
         .stNumberInput > div > div > input {
-            background: rgba(10, 18, 35, 0.9) !important;
-            border: 1px solid rgba(99,179,237,0.25) !important;
+            background: rgba(20, 38, 68, 0.85) !important;
+            border: 1px solid rgba(99,179,237,0.3) !important;
             color: #e2e8f0 !important;
             border-radius: 10px !important;
         }
@@ -2045,10 +2031,10 @@ def inject_styles() -> None:
 
         /* ── Tabs ── */
         .stTabs [data-baseweb="tab-list"] {
-            background: rgba(5, 13, 31, 0.8) !important;
+            background: rgba(15, 30, 60, 0.7) !important;
             border-radius: 14px !important;
             padding: 5px !important;
-            border: 1px solid rgba(255,215,0,0.12) !important;
+            border: 1px solid rgba(255,215,0,0.15) !important;
             gap: 4px !important;
         }
         .stTabs [data-baseweb="tab"] {
@@ -2104,10 +2090,10 @@ def inject_styles() -> None:
         /* ── Metrics ── */
         [data-testid="metric-container"] {
             background: linear-gradient(135deg,
-                rgba(255,255,255,0.03) 0%,
-                rgba(255,255,255,0.01) 100%
+                rgba(255,255,255,0.06) 0%,
+                rgba(255,255,255,0.03) 100%
             ) !important;
-            border: 1px solid rgba(255,255,255,0.07) !important;
+            border: 1px solid rgba(255,255,255,0.1) !important;
             border-radius: 16px !important;
             padding: 18px !important;
             backdrop-filter: blur(8px) !important;
@@ -2141,15 +2127,15 @@ def inject_styles() -> None:
             gap: 8px !important;
         }
         [data-baseweb="radio"] {
-            background: rgba(15, 23, 42, 0.6) !important;
+            background: rgba(20, 38, 70, 0.55) !important;
             border-radius: 10px !important;
             padding: 8px 14px !important;
-            border: 1px solid rgba(255,255,255,0.06) !important;
+            border: 1px solid rgba(255,255,255,0.09) !important;
             transition: all 0.2s ease !important;
         }
         [data-baseweb="radio"]:hover {
-            border-color: rgba(251,191,36,0.3) !important;
-            background: rgba(251,191,36,0.05) !important;
+            border-color: rgba(251,191,36,0.35) !important;
+            background: rgba(251,191,36,0.07) !important;
         }
 
         /* ── Fade-in animation for main content ── */
