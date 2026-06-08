@@ -61,40 +61,6 @@ SIMULATION_COLUMNS = [
     "reached_final",
     "won_tournament",
 ]
-BRACKET_SEED_ORDER = (
-    0,
-    31,
-    15,
-    16,
-    7,
-    24,
-    8,
-    23,
-    3,
-    28,
-    12,
-    19,
-    4,
-    27,
-    11,
-    20,
-    1,
-    30,
-    14,
-    17,
-    6,
-    25,
-    9,
-    22,
-    2,
-    29,
-    13,
-    18,
-    5,
-    26,
-    10,
-    21,
-)
 
 HOST_NATIONS = {"Canada", "Mexico", "USA", "United States"}
 HOST_GROUNDS = {
@@ -1036,18 +1002,80 @@ def simulate_group_phase(
 def seed_knockout_bracket(
     qualified_teams: List[Dict[str, float | str | int]],
 ) -> List[str]:
-    """Create a deterministic 32-team knockout bracket from qualifiers."""
+    """
+    Seed qualified teams into the official FIFA 2026 Round of 32 structure.
 
-    ordered_qualifiers = sorted(
+    The returned list remains ordered as consecutive match pairs so the
+    simulation and Plotly bracket can continue consuming it directly.
+    """
+
+    winners = {}
+    runners_up = {}
+    wildcards = []
+
+    sorted_teams = sorted(
         qualified_teams,
         key=lambda row: (
             int(row["group_position"]),
             -int(row["points"]),
             -float(row["elo"]),
-            str(row["team"]),
         ),
     )
-    return [str(ordered_qualifiers[index]["team"]) for index in BRACKET_SEED_ORDER]
+
+    for row in sorted_teams:
+        group_name = str(row["group"])
+        team_name = str(row["team"])
+        position = int(row["group_position"])
+
+        if position == 1:
+            winners[group_name] = team_name
+        elif position == 2:
+            runners_up[group_name] = team_name
+        elif position == 3:
+            wildcards.append(team_name)
+
+    while len(wildcards) < 8:
+        wildcards.append("Unknown Wildcard")
+
+    left_bracket_pairs = [
+        runners_up.get("Group A", "2A"),
+        runners_up.get("Group B", "2B"),
+        winners.get("Group C", "1C"),
+        runners_up.get("Group F", "2F"),
+        winners.get("Group E", "1E"),
+        wildcards[0],
+        winners.get("Group F", "1F"),
+        runners_up.get("Group C", "2C"),
+        runners_up.get("Group E", "2E"),
+        runners_up.get("Group I", "2I"),
+        winners.get("Group I", "1I"),
+        wildcards[1],
+        winners.get("Group A", "1A"),
+        wildcards[2],
+        winners.get("Group L", "1L"),
+        wildcards[3],
+    ]
+
+    right_bracket_pairs = [
+        winners.get("Group G", "1G"),
+        wildcards[4],
+        winners.get("Group D", "1D"),
+        wildcards[5],
+        winners.get("Group H", "1H"),
+        runners_up.get("Group J", "2J"),
+        runners_up.get("Group K", "2K"),
+        runners_up.get("Group L", "2L"),
+        winners.get("Group B", "1B"),
+        wildcards[6],
+        runners_up.get("Group D", "2D"),
+        runners_up.get("Group G", "2G"),
+        winners.get("Group J", "1J"),
+        runners_up.get("Group H", "2H"),
+        winners.get("Group K", "1K"),
+        wildcards[7],
+    ]
+
+    return left_bracket_pairs + right_bracket_pairs
 
 
 def resolve_knockout_match(
