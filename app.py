@@ -42,7 +42,7 @@ WORLD_CUP_2026_URL = (
 )
 RESULTS_URLS = (REQUESTED_RESULTS_URL, MAINTAINED_RESULTS_URL)
 CACHE_TTL_SECONDS = 12 * 60 * 60
-TRAINING_START_DATE = pd.Timestamp("2000-01-01")
+TRAINING_START_DATE = pd.Timestamp("2010-01-01")
 
 FEATURE_COLUMNS = [
     "team1_elo_rating",
@@ -604,17 +604,18 @@ def calculate_form(recent_points: Deque[int]) -> float:
 def engineer_training_features(
     results: pd.DataFrame,
 ) -> Tuple[pd.DataFrame, Dict[str, TeamState]]:
-    """Engineer pre-match ELO and recent-form features for model training."""
+    """Engineer pre-match ELO and recent-form features with modern weightings."""
 
     elo_ratings: Dict[str, float] = defaultdict(lambda: DEFAULT_ELO)
     recent_form: Dict[str, Deque[int]] = defaultdict(lambda: deque(maxlen=5))
-    rows: List[Dict[str, float | int | bool]] = []
+    rows: List[Dict[str, float | int | bool | pd.Timestamp]] = []
 
     for match in results.itertuples(index=False):
         home_team = str(match.home_team)
         away_team = str(match.away_team)
         home_score = int(match.home_score)
         away_score = int(match.away_score)
+        match_date = match.date
 
         home_elo = elo_ratings[home_team]
         away_elo = elo_ratings[away_team]
@@ -623,6 +624,7 @@ def engineer_training_features(
 
         rows.append(
             {
+                "date": match_date,
                 "team1_elo_rating": home_elo,
                 "team2_elo_rating": away_elo,
                 "elo_difference": home_elo - away_elo,
@@ -633,10 +635,32 @@ def engineer_training_features(
             }
         )
 
-        next_home_elo = update_elo(home_elo, away_elo, home_score, away_score)
-        next_away_elo = update_elo(away_elo, home_elo, away_score, home_score)
-        elo_ratings[home_team] = next_home_elo
-        elo_ratings[away_team] = next_away_elo
+        current_k = (
+            ELO_K_FACTOR * 1.5
+            if match_date >= pd.Timestamp("2020-01-01")
+            else ELO_K_FACTOR
+        )
+        margin_multiplier = 1.0 + math.log1p(abs(home_score - away_score))
+
+        actual_home = (
+            1.0
+            if home_score > away_score
+            else (0.5 if home_score == away_score else 0.0)
+        )
+        expected_home = expected_result(home_elo, away_elo)
+        elo_ratings[home_team] = (
+            home_elo + current_k * margin_multiplier * (actual_home - expected_home)
+        )
+
+        actual_away = (
+            1.0
+            if away_score > home_score
+            else (0.5 if home_score == away_score else 0.0)
+        )
+        expected_away = expected_result(away_elo, home_elo)
+        elo_ratings[away_team] = (
+            away_elo + current_k * margin_multiplier * (actual_away - expected_away)
+        )
 
         recent_form[home_team].append(match_points(home_score, away_score))
         recent_form[away_team].append(match_points(away_score, home_score))
@@ -654,15 +678,21 @@ def engineer_training_features(
 def train_model(
     results: pd.DataFrame,
 ) -> Tuple[Pipeline, Dict[str, TeamState], Dict[str, float]]:
-    """Train and cache the scikit-learn prediction pipeline."""
+    """Train and cache the prediction pipeline with modern sample weights."""
 
     feature_frame, team_states = engineer_training_features(results)
+    sample_weights = np.where(
+        feature_frame["date"] >= pd.Timestamp("2020-01-01"),
+        2.0,
+        1.0,
+    )
     x = feature_frame[FEATURE_COLUMNS]
     y = feature_frame["target"]
 
-    x_train, x_test, y_train, y_test = train_test_split(
+    x_train, x_test, y_train, y_test, sw_train, sw_test = train_test_split(
         x,
         y,
+        sample_weights,
         test_size=0.2,
         random_state=42,
         stratify=y,
@@ -682,7 +712,7 @@ def train_model(
             ),
         ]
     )
-    model.fit(x_train, y_train)
+    model.fit(x_train, y_train, classifier__sample_weight=sw_train)
 
     probabilities = model.predict_proba(x_test)
     predictions = model.predict(x_test)
