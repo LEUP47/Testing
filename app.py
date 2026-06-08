@@ -255,6 +255,76 @@ ROSTER_METRICS: Mapping[str, Tuple[float, float]] = {
     "Morocco": (380.0, 0.50),
     "Czechia": (150.0, 0.30),
 }
+
+
+VENUE_TEMPS: Mapping[str, float] = {
+    "Atlanta": 30.0,
+    "Boston": 24.0,
+    "Dallas": 34.0,
+    "Guadalajara": 28.0,
+    "Houston": 33.0,
+    "Kansas City": 29.0,
+    "Los Angeles": 26.0,
+    "Mexico City": 24.0,
+    "Miami": 32.0,
+    "Monterrey": 35.0,
+    "New York/New Jersey": 26.0,
+    "East Rutherford": 26.0,
+    "Philadelphia": 27.0,
+    "San Francisco Bay Area": 22.0,
+    "Seattle": 20.0,
+    "Toronto": 22.0,
+    "Vancouver": 19.0,
+    "Zapopan": 28.0,
+}
+
+
+TEAM_CLIMATE_BASELINES: Mapping[str, float] = {
+    "Argentina": 20.0,
+    "Brazil": 25.0,
+    "Canada": 17.0,
+    "Colombia": 24.0,
+    "Cote d'Ivoire": 27.0,
+    "Côte d'Ivoire": 27.0,
+    "Czechia": 16.0,
+    "Egypt": 26.0,
+    "England": 15.0,
+    "France": 16.0,
+    "Germany": 16.0,
+    "Japan": 21.0,
+    "Mexico": 25.0,
+    "Morocco": 24.0,
+    "Netherlands": 16.0,
+    "Portugal": 19.0,
+    "Saudi Arabia": 28.0,
+    "Spain": 18.0,
+    "USA": 19.0,
+    "United States": 19.0,
+    "Uruguay": 19.0,
+}
+
+
+def get_climate_modifier(team: str, ground: str) -> float:
+    """Calculate ELO thermal stress or acclimatization modifier."""
+
+    venue_temp = 24.0
+    for venue, temp in VENUE_TEMPS.items():
+        if venue.lower() in ground.lower():
+            venue_temp = temp
+            break
+
+    team_baseline = TEAM_CLIMATE_BASELINES.get(team, 20.0)
+
+    if venue_temp > 29.0 and team_baseline < 18.0:
+        thermal_shock = venue_temp - team_baseline
+        return -float(thermal_shock * 2.5)
+
+    if venue_temp > 30.0 and team_baseline >= 24.0:
+        return 15.0
+
+    return 0.0
+
+
 ROSTER_METRICS_NOTE = (
     "Squad values should be refreshed from national-team squad market values. "
     "Fatigue should be computed as likely starters above 3,500 club minutes "
@@ -630,14 +700,17 @@ def build_prediction_frame(
 
     team1_state = get_team_state(team1, team_states, team_lookup)
     team2_state = get_team_state(team2, team_states, team_lookup)
+    match_ground = ground or ""
+    team1_elo = team1_state.elo + get_climate_modifier(team1, match_ground)
+    team2_elo = team2_state.elo + get_climate_modifier(team2, match_ground)
     is_neutral = infer_neutrality(team1, ground)
 
     return pd.DataFrame(
         [
             {
-                "team1_elo_rating": team1_state.elo,
-                "team2_elo_rating": team2_state.elo,
-                "elo_difference": team1_state.elo - team2_state.elo,
+                "team1_elo_rating": team1_elo,
+                "team2_elo_rating": team2_elo,
+                "elo_difference": team1_elo - team2_elo,
                 "team1_form": team1_state.form,
                 "team2_form": team2_state.form,
                 "is_neutral": is_neutral,
@@ -724,28 +797,33 @@ def deserialize_team_states(
 def build_probability_cache(
     model: Pipeline,
     team_states: Mapping[str, TeamState],
-) -> Tuple[Dict[Tuple[str, str, bool], np.ndarray], np.ndarray]:
-    """Precompute ordered-pair probabilities for fast simulation sampling."""
+    grounds: Tuple[str, ...],
+) -> Tuple[Dict[Tuple[str, str, bool, str], np.ndarray], np.ndarray]:
+    """Precompute ordered-pair probabilities for venue-aware simulation sampling."""
 
-    keys: List[Tuple[str, str, bool]] = []
+    unique_grounds = tuple(dict.fromkeys(ground or "" for ground in grounds))
+    keys: List[Tuple[str, str, bool, str]] = []
     rows: List[Dict[str, float | bool]] = []
 
-    for is_neutral in (False, True):
-        for team1, team1_state in team_states.items():
-            for team2, team2_state in team_states.items():
-                if team1 == team2:
-                    continue
-                keys.append((team1, team2, is_neutral))
-                rows.append(
-                    {
-                        "team1_elo_rating": team1_state.elo,
-                        "team2_elo_rating": team2_state.elo,
-                        "elo_difference": team1_state.elo - team2_state.elo,
-                        "team1_form": team1_state.form,
-                        "team2_form": team2_state.form,
-                        "is_neutral": is_neutral,
-                    }
-                )
+    for ground in unique_grounds:
+        for is_neutral in (False, True):
+            for team1, team1_state in team_states.items():
+                for team2, team2_state in team_states.items():
+                    if team1 == team2:
+                        continue
+                    team1_elo = team1_state.elo + get_climate_modifier(team1, ground)
+                    team2_elo = team2_state.elo + get_climate_modifier(team2, ground)
+                    keys.append((team1, team2, is_neutral, ground))
+                    rows.append(
+                        {
+                            "team1_elo_rating": team1_elo,
+                            "team2_elo_rating": team2_elo,
+                            "elo_difference": team1_elo - team2_elo,
+                            "team1_form": team1_state.form,
+                            "team2_form": team2_state.form,
+                            "is_neutral": is_neutral,
+                        }
+                    )
 
     probability_frame = pd.DataFrame(rows, columns=FEATURE_COLUMNS)
     probabilities = model.predict_proba(probability_frame)
@@ -760,12 +838,13 @@ def sample_match_result(
     team1: str,
     team2: str,
     is_neutral: bool,
-    probability_cache: Mapping[Tuple[str, str, bool], np.ndarray],
+    ground: str,
+    probability_cache: Mapping[Tuple[str, str, bool, str], np.ndarray],
     class_labels: np.ndarray,
 ) -> int:
     """Sample one match outcome from the model's class probability array."""
 
-    probabilities = probability_cache[(team1, team2, is_neutral)]
+    probabilities = probability_cache[(team1, team2, is_neutral, ground or "")]
     return int(np.random.choice(class_labels, p=probabilities))
 
 
@@ -801,20 +880,21 @@ def build_group_simulation_inputs(
     group_matches: pd.DataFrame,
     team_states: Mapping[str, TeamState],
 ) -> Tuple[
-    Tuple[Tuple[str, str, str, bool], ...],
+    Tuple[Tuple[str, str, str, bool, str], ...],
     Dict[str, Dict[str, float]],
 ]:
     """Precompute immutable group fixture records and standings templates."""
 
-    group_records: List[Tuple[str, str, str, bool]] = []
+    group_records: List[Tuple[str, str, str, bool, str]] = []
     standings_template: Dict[str, Dict[str, float]] = {}
 
     for match in group_matches.itertuples(index=False):
         group_name = str(match.group)
         team1 = str(match.team1)
         team2 = str(match.team2)
-        is_neutral = infer_neutrality(team1, str(match.ground))
-        group_records.append((group_name, team1, team2, is_neutral))
+        ground = str(match.ground)
+        is_neutral = infer_neutrality(team1, ground)
+        group_records.append((group_name, team1, team2, is_neutral, ground))
 
         standings_template.setdefault(group_name, {})
         standings_template[group_name].setdefault(team1, team_states[team1].elo)
@@ -824,9 +904,9 @@ def build_group_simulation_inputs(
 
 
 def simulate_group_phase(
-    group_records: Tuple[Tuple[str, str, str, bool], ...],
+    group_records: Tuple[Tuple[str, str, str, bool, str], ...],
     standings_template: Mapping[str, Mapping[str, float]],
-    probability_cache: Mapping[Tuple[str, str, bool], np.ndarray],
+    probability_cache: Mapping[Tuple[str, str, bool, str], np.ndarray],
     class_labels: np.ndarray,
 ) -> List[Dict[str, float | str | int]]:
     """Simulate the 72 group matches and return 32 qualified teams."""
@@ -836,11 +916,12 @@ def simulate_group_phase(
         for group_name, group_teams in standings_template.items()
     }
 
-    for group_name, team1, team2, is_neutral in group_records:
+    for group_name, team1, team2, is_neutral, ground in group_records:
         result = sample_match_result(
             team1,
             team2,
             is_neutral,
+            ground,
             probability_cache,
             class_labels,
         )
@@ -898,8 +979,9 @@ def resolve_knockout_match(
     team1: str,
     team2: str,
     team_states: Mapping[str, TeamState],
-    probability_cache: Mapping[Tuple[str, str, bool], np.ndarray],
+    probability_cache: Mapping[Tuple[str, str, bool, str], np.ndarray],
     class_labels: np.ndarray,
+    ground: str = "",
 ) -> str:
     """Resolve a single-elimination match, including draw tie-breakers."""
 
@@ -907,6 +989,7 @@ def resolve_knockout_match(
         team1,
         team2,
         True,
+        ground,
         probability_cache,
         class_labels,
     )
@@ -915,7 +998,9 @@ def resolve_knockout_match(
     if result == 0:
         return team2
 
-    elo_difference = team_states[team1].elo - team_states[team2].elo
+    team1_elo = team_states[team1].elo + get_climate_modifier(team1, ground)
+    team2_elo = team_states[team2].elo + get_climate_modifier(team2, ground)
+    elo_difference = team1_elo - team2_elo
     team1_tiebreak_probability = float(np.clip(0.5 + elo_difference / 1200, 0.35, 0.65))
     return str(
         np.random.choice(
@@ -928,8 +1013,9 @@ def resolve_knockout_match(
 def play_knockout_round(
     teams: List[str],
     team_states: Mapping[str, TeamState],
-    probability_cache: Mapping[Tuple[str, str, bool], np.ndarray],
+    probability_cache: Mapping[Tuple[str, str, bool, str], np.ndarray],
     class_labels: np.ndarray,
+    ground: str = "",
 ) -> List[str]:
     """Play one knockout round and return advancing teams in bracket order."""
 
@@ -945,6 +1031,7 @@ def play_knockout_round(
                 team_states,
                 probability_cache,
                 class_labels,
+                ground,
             )
         )
     return winners
@@ -965,10 +1052,17 @@ def run_monte_carlo_simulation(
 
     np.random.seed(random_seed)
     team_states = deserialize_team_states(team_state_records)
-    probability_cache, class_labels = build_probability_cache(_model, team_states)
     group_records, standings_template = build_group_simulation_inputs(
         group_matches,
         team_states,
+    )
+    simulation_grounds = tuple(
+        sorted({record[4] for record in group_records if record[4]} | {""})
+    )
+    probability_cache, class_labels = build_probability_cache(
+        _model,
+        team_states,
+        simulation_grounds,
     )
     counters: Dict[str, Dict[str, int]] = {
         team: {column: 0 for column in SIMULATION_COLUMNS}
@@ -1055,10 +1149,17 @@ def simulate_single_tournament(
 
     np.random.seed(random_seed)
     team_states = deserialize_team_states(team_state_records)
-    probability_cache, class_labels = build_probability_cache(_model, team_states)
     group_records, standings_template = build_group_simulation_inputs(
         group_matches,
         team_states,
+    )
+    simulation_grounds = tuple(
+        sorted({record[4] for record in group_records if record[4]} | {""})
+    )
+    probability_cache, class_labels = build_probability_cache(
+        _model,
+        team_states,
+        simulation_grounds,
     )
 
     qualified_teams = simulate_group_phase(
@@ -2337,6 +2438,28 @@ def main() -> None:
                 st.markdown(f"**{team2} Roster Profile**")
                 st.caption(f"Squad Market Value: €{t2_val}M")
                 st.caption(f"Squad Fatigue Index: {t2_fat:.0%}")
+
+            match_ground = selected_ground if selected_ground else "Temperate Venue"
+            t1_mod = get_climate_modifier(team1, match_ground)
+            t2_mod = get_climate_modifier(team2, match_ground)
+
+            st.markdown("---")
+            st.markdown(f"**Environmental Context ({match_ground})**")
+            c_mod1, c_mod2 = st.columns(2)
+            with c_mod1:
+                status = (
+                    "Thermal Stress"
+                    if t1_mod < 0
+                    else ("Adapted Advantage" if t1_mod > 0 else "Neutral Climate")
+                )
+                st.caption(f"Climate Impact: {status} ({t1_mod:+.1f} ELO)")
+            with c_mod2:
+                status = (
+                    "Thermal Stress"
+                    if t2_mod < 0
+                    else ("Adapted Advantage" if t2_mod > 0 else "Neutral Climate")
+                )
+                st.caption(f"Climate Impact: {status} ({t2_mod:+.1f} ELO)")
 
         if team1 == team2:
             st.warning("Choose two different teams to predict a meaningful matchup.")
