@@ -1414,6 +1414,11 @@ def render_plotly_bracket(bracket_data: Dict[str, List[str]]) -> None:
     }
     node_width = 0.78
     node_height = 3.6
+    champion_x = 5.0
+    champion_y = 72.0
+    champion_width = 1.25
+    champion_height = 5.2
+    final_junction_y = 60.0
     shapes = []
     annotations = []
     hover_x: List[float] = []
@@ -1434,8 +1439,8 @@ def render_plotly_bracket(bracket_data: Dict[str, List[str]]) -> None:
 
     def add_node(team: str, x_value: float, y_value: float, round_label: str) -> None:
         fill_color, border_color, font_size, font_color = node_style(round_label)
-        width = 1.1 if round_label == "Champion" else node_width
-        height = 5.0 if round_label == "Champion" else node_height
+        width = champion_width if round_label == "Champion" else node_width
+        height = champion_height if round_label == "Champion" else node_height
         border_width = 2.5 if round_label == "Champion" else 1.3
         shapes.append(
             {
@@ -1525,7 +1530,7 @@ def render_plotly_bracket(bracket_data: Dict[str, List[str]]) -> None:
             for team, (_, y_value) in zip(teams, coordinates):
                 add_node(team, x_value, y_value, round_label)
 
-    add_node(champion, 5.0, 60.0, "Champion")
+    add_node(champion, champion_x, champion_y, "Champion")
 
     round_pairs = [
         ("R32", "R16"),
@@ -1544,11 +1549,27 @@ def render_plotly_bracket(bracket_data: Dict[str, List[str]]) -> None:
                 x_to = target_coordinates[index][0]
                 add_connector(fig, x_from, y_one, y_two, x_to, target_y)
 
-    for finalist_x, finalist_y in [(4.0, 60.0), (6.0, 60.0)]:
+    final_connectors = [
+        (
+            [4.0 + node_width / 2, champion_x, None, champion_x, champion_x],
+            [
+                final_junction_y,
+                final_junction_y,
+                None,
+                final_junction_y,
+                champion_y - champion_height / 2,
+            ],
+        ),
+        (
+            [6.0 - node_width / 2, champion_x],
+            [final_junction_y, final_junction_y],
+        ),
+    ]
+    for x_values, y_values in final_connectors:
         fig.add_trace(
             go.Scatter(
-                x=[finalist_x, 5.0],
-                y=[finalist_y, 60.0],
+                x=x_values,
+                y=y_values,
                 mode="lines",
                 line={"color": "#ffd700", "width": 2.2},
                 hoverinfo="skip",
