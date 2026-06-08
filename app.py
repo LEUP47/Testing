@@ -279,6 +279,28 @@ VENUE_TEMPS: Mapping[str, float] = {
 }
 
 
+VENUE_COORDINATES: Mapping[str, Tuple[float, float]] = {
+    "Atlanta": (33.7489, -84.3880),
+    "Boston": (42.3601, -71.0589),
+    "Dallas": (32.7767, -96.7970),
+    "Guadalajara": (20.6597, -103.3496),
+    "Houston": (29.7604, -95.3698),
+    "Kansas City": (39.0997, -94.5786),
+    "Los Angeles": (34.0522, -118.2437),
+    "Mexico City": (19.4326, -99.1332),
+    "Miami": (25.7617, -80.1918),
+    "Monterrey": (25.6866, -100.3161),
+    "East Rutherford": (40.8339, -74.0971),
+    "New York/New Jersey": (40.8339, -74.0971),
+    "Philadelphia": (39.9526, -75.1652),
+    "San Francisco Bay Area": (37.7749, -122.4194),
+    "Seattle": (47.6062, -122.3321),
+    "Toronto": (43.6532, -79.3832),
+    "Vancouver": (49.2827, -123.1207),
+    "Zapopan": (20.7224, -103.3916),
+}
+
+
 TEAM_CLIMATE_BASELINES: Mapping[str, float] = {
     "Argentina": 20.0,
     "Brazil": 25.0,
@@ -304,14 +326,67 @@ TEAM_CLIMATE_BASELINES: Mapping[str, float] = {
 }
 
 
-def get_climate_modifier(team: str, ground: str) -> float:
-    """Calculate ELO thermal stress or acclimatization modifier."""
+def resolve_venue_coordinates(ground: str) -> Optional[Tuple[float, float]]:
+    """Resolve a fixture venue string to known 2026 host coordinates."""
 
-    venue_temp = 24.0
-    for venue, temp in VENUE_TEMPS.items():
+    for venue, coordinates in VENUE_COORDINATES.items():
         if venue.lower() in ground.lower():
-            venue_temp = temp
-            break
+            return coordinates
+    return None
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_live_venue_temperature(ground: str) -> float:
+    """Fetch current venue temperature from Open-Meteo using host coordinates."""
+
+    coordinates = resolve_venue_coordinates(ground)
+    if coordinates is None:
+        return 24.0
+
+    latitude, longitude = coordinates
+    params = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "current": "temperature_2m",
+        "temperature_unit": "celsius",
+    }
+    headers = {"User-Agent": "world-cup-2026-streamlit-app/1.0"}
+
+    try:
+        response = requests.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params=params,
+            timeout=10,
+            headers=headers,
+            verify=certifi.where(),
+        )
+        response.raise_for_status()
+    except requests.exceptions.SSLError:
+        try:
+            response = requests.get(
+                "https://api.open-meteo.com/v1/forecast",
+                params=params,
+                timeout=10,
+                headers=headers,
+                verify=False,
+            )
+            response.raise_for_status()
+        except requests.RequestException:
+            return 24.0
+    except requests.RequestException:
+        return 24.0
+
+    try:
+        payload = response.json()
+        return float(payload["current"]["temperature_2m"])
+    except (KeyError, TypeError, ValueError):
+        return 24.0
+
+
+def get_climate_modifier(team: str, ground: str) -> float:
+    """Calculate live ELO thermal stress or acclimatization modifier."""
+
+    venue_temp = fetch_live_venue_temperature(ground)
 
     team_baseline = TEAM_CLIMATE_BASELINES.get(team, 20.0)
 
