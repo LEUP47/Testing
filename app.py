@@ -912,10 +912,13 @@ def sample_match_result(
     ground: str,
     probability_cache: Mapping[Tuple[str, str, bool, str], np.ndarray],
     class_labels: np.ndarray,
+    deterministic: bool = False,
 ) -> int:
-    """Sample one match outcome from the model's class probability array."""
+    """Sample or deterministically select one match outcome."""
 
     probabilities = probability_cache[(team1, team2, is_neutral, ground or "")]
+    if deterministic:
+        return int(class_labels[np.argmax(probabilities)])
     return int(np.random.choice(class_labels, p=probabilities))
 
 
@@ -979,6 +982,7 @@ def simulate_group_phase(
     standings_template: Mapping[str, Mapping[str, float]],
     probability_cache: Mapping[Tuple[str, str, bool, str], np.ndarray],
     class_labels: np.ndarray,
+    deterministic: bool = False,
 ) -> List[Dict[str, float | str | int]]:
     """Simulate the 72 group matches and return 32 qualified teams."""
 
@@ -995,6 +999,7 @@ def simulate_group_phase(
             ground,
             probability_cache,
             class_labels,
+            deterministic=deterministic,
         )
 
         if result == 2:
@@ -1115,6 +1120,7 @@ def resolve_knockout_match(
     probability_cache: Mapping[Tuple[str, str, bool, str], np.ndarray],
     class_labels: np.ndarray,
     ground: str = "",
+    deterministic: bool = False,
 ) -> str:
     """Resolve a single-elimination match, including draw tie-breakers."""
 
@@ -1125,6 +1131,7 @@ def resolve_knockout_match(
         ground,
         probability_cache,
         class_labels,
+        deterministic=deterministic,
     )
     if result == 2:
         return team1
@@ -1133,6 +1140,9 @@ def resolve_knockout_match(
 
     team1_elo = team_states[team1].elo + get_climate_modifier(team1, ground)
     team2_elo = team_states[team2].elo + get_climate_modifier(team2, ground)
+    if deterministic:
+        return team1 if team1_elo >= team2_elo else team2
+
     elo_difference = team1_elo - team2_elo
     team1_tiebreak_probability = float(np.clip(0.5 + elo_difference / 1200, 0.35, 0.65))
     return str(
@@ -1149,6 +1159,7 @@ def play_knockout_round(
     probability_cache: Mapping[Tuple[str, str, bool, str], np.ndarray],
     class_labels: np.ndarray,
     ground: str = "",
+    deterministic: bool = False,
 ) -> List[str]:
     """Play one knockout round and return advancing teams in bracket order."""
 
@@ -1165,6 +1176,7 @@ def play_knockout_round(
                 probability_cache,
                 class_labels,
                 ground,
+                deterministic=deterministic,
             )
         )
     return winners
@@ -1277,6 +1289,7 @@ def simulate_single_tournament(
     team_state_records: Tuple[Tuple[str, float, float], ...],
     _model: Pipeline,
     random_seed: int,
+    deterministic: bool = False,
 ) -> Dict[str, List[str]]:
     """Simulate one tournament run and return concrete bracket paths."""
 
@@ -1300,6 +1313,7 @@ def simulate_single_tournament(
         standings_template,
         probability_cache,
         class_labels,
+        deterministic=deterministic,
     )
 
     round_of_32 = seed_knockout_bracket(qualified_teams)
@@ -1308,30 +1322,35 @@ def simulate_single_tournament(
         team_states,
         probability_cache,
         class_labels,
+        deterministic=deterministic,
     )
     quarterfinals = play_knockout_round(
         round_of_16,
         team_states,
         probability_cache,
         class_labels,
+        deterministic=deterministic,
     )
     semifinals = play_knockout_round(
         quarterfinals,
         team_states,
         probability_cache,
         class_labels,
+        deterministic=deterministic,
     )
     finalists = play_knockout_round(
         semifinals,
         team_states,
         probability_cache,
         class_labels,
+        deterministic=deterministic,
     )
     champion = play_knockout_round(
         finalists,
         team_states,
         probability_cache,
         class_labels,
+        deterministic=deterministic,
     )[0]
 
     return {
@@ -2717,6 +2736,14 @@ def main() -> None:
                 value=2026,
                 step=1,
             )
+            bracket_mode = st.selectbox(
+                "Visual Bracket Mode",
+                (
+                    "Most Likely Path (Deterministic)",
+                    "Random Sample Path (Probabilistic)",
+                ),
+            )
+            is_deterministic = bracket_mode == "Most Likely Path (Deterministic)"
             run_simulation = st.button(
                 "Run Monte Carlo Simulation",
                 type="primary",
@@ -2749,6 +2776,7 @@ def main() -> None:
                 team_state_records=team_state_records,
                 _model=model,
                 random_seed=int(random_seed),
+                deterministic=is_deterministic,
             )
             most_likely_winner = simulation_results.iloc[0]
             winner_col, final_col, group_col = st.columns(3)
