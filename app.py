@@ -3131,17 +3131,26 @@ def main() -> None:
             if sf_winners:
                 st.info("Complete both Semifinal picks to unlock the Final.")
 
+        padded_r16 = r32_winners + ["?"] * (16 - len(r32_winners))
+        padded_qf = r16_winners + ["?"] * (8 - len(r16_winners))
+        padded_sf = qf_winners + ["?"] * (4 - len(qf_winners))
+        padded_finalists = sf_winners + ["?"] * (2 - len(sf_winners))
+        padded_champion = final_winner if final_winner else ["?"]
+
+        manual_bracket_data = {
+            "Round of 32": round_of_32,
+            "Round of 16": padded_r16,
+            "Quarterfinals": padded_qf,
+            "Semifinals": padded_sf,
+            "Finalists": padded_finalists,
+            "Champion": padded_champion,
+        }
+
         if len(final_winner) == 1:
-            st.metric("Manual bracket champion", final_winner[0])
-            manual_bracket_data = {
-                "Round of 32": round_of_32,
-                "Round of 16": r32_winners,
-                "Quarterfinals": r16_winners,
-                "Semifinals": qf_winners,
-                "Finalists": sf_winners,
-                "Champion": final_winner,
-            }
-            render_plotly_bracket(manual_bracket_data)
+            st.markdown("---")
+            st.metric("Manual Bracket Champion", final_winner[0])
+
+        render_plotly_bracket(manual_bracket_data)
 
 
 if __name__ == "__main__":
