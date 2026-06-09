@@ -354,7 +354,7 @@ def resolve_venue_coordinates(ground: str) -> Optional[Tuple[float, float]]:
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_live_venue_temperature(ground: str) -> float:
-    """Fetch current venue temperature from Open-Meteo using host coordinates."""
+    """Fetch projected daily maximum temperature from Open-Meteo."""
 
     coordinates = resolve_venue_coordinates(ground)
     if coordinates is None:
@@ -364,8 +364,8 @@ def fetch_live_venue_temperature(ground: str) -> float:
     params = {
         "latitude": latitude,
         "longitude": longitude,
-        "current": "temperature_2m",
-        "temperature_unit": "celsius",
+        "daily": "temperature_2m_max",
+        "timezone": "auto",
     }
     headers = {"User-Agent": "world-cup-2026-streamlit-app/1.0"}
 
@@ -378,7 +378,7 @@ def fetch_live_venue_temperature(ground: str) -> float:
             verify=certifi.where(),
         )
         response.raise_for_status()
-    except requests.exceptions.SSLError:
+    except Exception:
         try:
             response = requests.get(
                 "https://api.open-meteo.com/v1/forecast",
@@ -388,31 +388,29 @@ def fetch_live_venue_temperature(ground: str) -> float:
                 verify=False,
             )
             response.raise_for_status()
-        except requests.RequestException:
+        except Exception:
             return 24.0
-    except requests.RequestException:
-        return 24.0
 
     try:
         payload = response.json()
-        return float(payload["current"]["temperature_2m"])
-    except (KeyError, TypeError, ValueError):
+        return float(payload["daily"]["temperature_2m_max"][0])
+    except (KeyError, TypeError, ValueError, IndexError):
         return 24.0
 
 
 def get_climate_modifier(team: str, ground: str) -> float:
-    """Calculate live ELO thermal stress or acclimatization modifier."""
+    """Calculate ELO thermal modifiers from projected afternoon maximums."""
 
     venue_temp = fetch_live_venue_temperature(ground)
 
     team_baseline = TEAM_CLIMATE_BASELINES.get(team, 20.0)
 
-    if venue_temp > 29.0 and team_baseline < 18.0:
+    if venue_temp > 28.0 and team_baseline < 18.0:
         thermal_shock = venue_temp - team_baseline
-        return -float(thermal_shock * 2.5)
+        return -float(thermal_shock * 2.0)
 
-    if venue_temp > 30.0 and team_baseline >= 24.0:
-        return 15.0
+    if venue_temp > 29.0 and team_baseline >= 24.0:
+        return 12.0
 
     return 0.0
 
