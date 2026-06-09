@@ -1953,6 +1953,161 @@ def render_score_probability_matrix(
         st.markdown("</div>", unsafe_allow_html=True)
 
 
+BRACKET_BUILDER_STATE_SIZES: Mapping[str, int] = {
+    "builder_r32_winners": 16,
+    "builder_r16_winners": 8,
+    "builder_qf_winners": 4,
+    "builder_sf_winners": 2,
+    "builder_final_winner": 1,
+}
+
+
+def initialize_bracket_builder_state() -> None:
+    """Initialize manual bracket selections in Streamlit session state."""
+
+    for state_key, size in BRACKET_BUILDER_STATE_SIZES.items():
+        if state_key not in st.session_state:
+            st.session_state[state_key] = [None] * size
+        elif len(st.session_state[state_key]) != size:
+            st.session_state[state_key] = [None] * size
+
+
+def reset_bracket_builder_state() -> None:
+    """Clear all manual bracket selections."""
+
+    for state_key, size in BRACKET_BUILDER_STATE_SIZES.items():
+        st.session_state[state_key] = [None] * size
+
+
+def build_deterministic_round_of_32(
+    group_matches: pd.DataFrame,
+    team_state_records: Tuple[Tuple[str, float, float], ...],
+    _model: Pipeline,
+) -> List[str]:
+    """Build the official Round of 32 from deterministic group simulation."""
+
+    team_states = deserialize_team_states(team_state_records)
+    group_records, standings_template = build_group_simulation_inputs(
+        group_matches,
+        team_states,
+    )
+    simulation_grounds = tuple(
+        sorted({record[4] for record in group_records if record[4]} | {""})
+    )
+    probability_cache, class_labels = build_probability_cache(
+        _model,
+        team_states,
+        simulation_grounds,
+    )
+    qualified_teams = simulate_group_phase(
+        group_records,
+        standings_template,
+        probability_cache,
+        class_labels,
+        deterministic=True,
+    )
+    return seed_knockout_bracket(qualified_teams)
+
+
+def synchronize_builder_round_state(state_key: str, teams: List[str]) -> None:
+    """Keep stored winners aligned with the currently available matchups."""
+
+    slot_count = len(teams) // 2
+    stored_winners = list(st.session_state.get(state_key, [None] * slot_count))
+    if len(stored_winners) != slot_count:
+        stored_winners = [None] * slot_count
+
+    for index in range(slot_count):
+        valid_teams = {teams[index * 2], teams[index * 2 + 1]}
+        if stored_winners[index] not in valid_teams:
+            stored_winners[index] = None
+
+    st.session_state[state_key] = stored_winners
+
+
+def render_bracket_builder_round(
+    round_name: str,
+    teams: List[str],
+    state_key: str,
+    model: Pipeline,
+    team_states: Mapping[str, TeamState],
+    team_lookup: Mapping[str, str],
+) -> List[str]:
+    """Render one interactive manual bracket round and return selected winners."""
+
+    synchronize_builder_round_state(state_key, teams)
+    winner_slots = list(st.session_state[state_key])
+    match_count = len(teams) // 2
+
+    st.caption(f"{match_count} matchups")
+    matchup_columns = st.columns(2)
+    for match_index in range(match_count):
+        team_a = teams[match_index * 2]
+        team_b = teams[match_index * 2 + 1]
+        prediction_frame = build_prediction_frame(
+            team_a,
+            team_b,
+            team_states,
+            team_lookup,
+            ground="Unknown Stadium",
+        )
+        probabilities = probability_by_class(model, prediction_frame)
+        team_a_win = probabilities.get(2, 0.5)
+        team_b_win = probabilities.get(0, 0.5)
+        draw = probabilities.get(1, 0.0)
+        decisive_total = team_a_win + team_b_win
+        if decisive_total > 0:
+            team_a_advancement = team_a_win / decisive_total
+            team_b_advancement = team_b_win / decisive_total
+        else:
+            team_a_advancement = 0.5
+            team_b_advancement = 0.5
+
+        pending_option = "Select winner"
+        options = (pending_option, team_a, team_b)
+        current_selection = winner_slots[match_index]
+        selected_index = (
+            options.index(current_selection)
+            if current_selection in options
+            else 0
+        )
+        option_labels = {
+            pending_option: "Select winner",
+            team_a: f"{team_a} ({team_a_advancement * 100:.1f}%)",
+            team_b: f"{team_b} ({team_b_advancement * 100:.1f}%)",
+        }
+
+        with matchup_columns[match_index % 2]:
+            st.markdown(f"**Match {match_index + 1}: {team_a} vs {team_b}**")
+            selection = st.selectbox(
+                "Winner",
+                options,
+                index=selected_index,
+                key=(
+                    f"{state_key}_{match_index}_"
+                    f"{normalize_team_name(team_a)}_{normalize_team_name(team_b)}"
+                ),
+                format_func=lambda option, labels=option_labels: labels.get(
+                    option,
+                    option,
+                ),
+                label_visibility="collapsed",
+            )
+            st.caption(f"Draw model probability: {draw * 100:.1f}%")
+            winner_slots[match_index] = (
+                None if selection == pending_option else selection
+            )
+
+    st.session_state[state_key] = winner_slots
+    selected_winners = [winner for winner in winner_slots if winner]
+    if len(selected_winners) == match_count:
+        st.success(f"{round_name} complete.")
+    else:
+        st.info(f"Pick {match_count - len(selected_winners)} more winner(s).")
+
+    return selected_winners
+
+
 def inject_styles() -> None:
     """Inject global CSS styles for the FIFA World Cup 2026 theme."""
 
@@ -2588,7 +2743,11 @@ def main() -> None:
     )
     app_view = st.sidebar.radio(
         "🧭 Vista",
-        ("Match Predictor", "Tournament Simulation Engine"),
+        (
+            "Match Predictor",
+            "Tournament Simulation Engine",
+            "Interactive Bracket Builder",
+        ),
         label_visibility="collapsed",
     )
 
@@ -2850,6 +3009,139 @@ def main() -> None:
             render_plotly_bracket(single_bracket_data)
         else:
             st.info("Choose the number of iterations, then run the simulation.")
+
+    if app_view == "Interactive Bracket Builder":
+        st.markdown(
+            "<h2 style='color:#f1f5f9;font-family:Inter,sans-serif;font-weight:800;"
+            "font-size:20px;margin-bottom:4px;'>Interactive Bracket Builder</h2>",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            "<p style='color:#64748b;font-size:13px;margin-top:0;font-family:Inter,sans-serif;'>"
+            "Start from a deterministic group-stage projection, then manually pick every "
+            "knockout winner with model probabilities beside each matchup.</p>",
+            unsafe_allow_html=True,
+        )
+
+        initialize_bracket_builder_state()
+        team_state_records = serialize_tournament_team_states(
+            team_states,
+            team_lookup,
+        )
+        round_of_32 = build_deterministic_round_of_32(
+            group_stage_matches,
+            team_state_records,
+            model,
+        )
+
+        control_col, summary_col = st.columns([1, 2])
+        with control_col:
+            if st.button("Reset Bracket Picks", use_container_width=True):
+                reset_bracket_builder_state()
+                st.rerun()
+        with summary_col:
+            st.metric("Baseline qualifiers", len(round_of_32))
+            st.caption(
+                "Round of 32 seeding follows the official 2026 bracket map."
+            )
+
+        with st.expander("Fase de Grupos: Deterministic Round of 32", expanded=True):
+            st.caption(
+                "These 32 teams are produced by deterministic group simulation "
+                "and then seeded into the official knockout architecture."
+            )
+            r32_preview = pd.DataFrame(
+                [
+                    {
+                        "Match": index // 2 + 1,
+                        "Team": team,
+                        "Side": "Left" if index < 16 else "Right",
+                    }
+                    for index, team in enumerate(round_of_32)
+                ]
+            )
+            st.dataframe(r32_preview, use_container_width=True, hide_index=True)
+
+        with st.expander("Round of 32", expanded=True):
+            r32_winners = render_bracket_builder_round(
+                "Round of 32",
+                round_of_32,
+                "builder_r32_winners",
+                model,
+                team_states,
+                team_lookup,
+            )
+
+        if len(r32_winners) == 16:
+            with st.expander("Round of 16", expanded=True):
+                r16_winners = render_bracket_builder_round(
+                    "Round of 16",
+                    r32_winners,
+                    "builder_r16_winners",
+                    model,
+                    team_states,
+                    team_lookup,
+                )
+        else:
+            r16_winners = []
+            st.info("Complete all Round of 32 picks to unlock the Round of 16.")
+
+        if len(r16_winners) == 8:
+            with st.expander("Quarterfinals", expanded=True):
+                qf_winners = render_bracket_builder_round(
+                    "Quarterfinals",
+                    r16_winners,
+                    "builder_qf_winners",
+                    model,
+                    team_states,
+                    team_lookup,
+                )
+        else:
+            qf_winners = []
+            if r16_winners:
+                st.info("Complete all Round of 16 picks to unlock the Quarterfinals.")
+
+        if len(qf_winners) == 4:
+            with st.expander("Semifinals", expanded=True):
+                sf_winners = render_bracket_builder_round(
+                    "Semifinals",
+                    qf_winners,
+                    "builder_sf_winners",
+                    model,
+                    team_states,
+                    team_lookup,
+                )
+        else:
+            sf_winners = []
+            if qf_winners:
+                st.info("Complete all Quarterfinal picks to unlock the Semifinals.")
+
+        if len(sf_winners) == 2:
+            with st.expander("Final", expanded=True):
+                final_winner = render_bracket_builder_round(
+                    "Final",
+                    sf_winners,
+                    "builder_final_winner",
+                    model,
+                    team_states,
+                    team_lookup,
+                )
+        else:
+            final_winner = []
+            if sf_winners:
+                st.info("Complete both Semifinal picks to unlock the Final.")
+
+        if len(final_winner) == 1:
+            st.metric("Manual bracket champion", final_winner[0])
+            manual_bracket_data = {
+                "Round of 32": round_of_32,
+                "Round of 16": r32_winners,
+                "Quarterfinals": r16_winners,
+                "Semifinals": qf_winners,
+                "Finalists": sf_winners,
+                "Champion": final_winner,
+            }
+            render_plotly_bracket(manual_bracket_data)
 
 
 if __name__ == "__main__":
