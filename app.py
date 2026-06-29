@@ -2736,6 +2736,42 @@ def render_hero_header() -> None:
     st.markdown(hero_html.replace("\n", " "), unsafe_allow_html=True)
 
 
+REAL_WORLD_ROUND_OF_32: List[str] = [
+    "South Africa",
+    "Canada",
+    "Netherlands",
+    "Morocco",
+    "Germany",
+    "Paraguay",
+    "France",
+    "Sweden",
+    "Belgium",
+    "Senegal",
+    "United States",
+    "Bosnia and Herzegovina",
+    "Spain",
+    "Austria",
+    "Portugal",
+    "Croacia" if "Croacia" in WORLD_CUP_2026_TEAMS else "Croatia",
+    "Brazil",
+    "Japan",
+    "Côte d'Ivoire",
+    "Norway",
+    "Mexico",
+    "Ecuador",
+    "England",
+    "Congo DR",
+    "Switzerland",
+    "Algeria",
+    "Colombia",
+    "Ghana",
+    "Australia",
+    "Egypt",
+    "Argentina",
+    "Cabo Verde",
+]
+
+
 def main() -> None:
     """Run the Streamlit application."""
 
@@ -3050,11 +3086,7 @@ def main() -> None:
 
         initialize_bracket_builder_state()
         team_state_records = serialize_tournament_team_states(team_states, team_lookup)
-        round_of_32 = build_deterministic_round_of_32(
-            group_stage_matches,
-            team_state_records,
-            model,
-        )
+        round_of_32 = REAL_WORLD_ROUND_OF_32
 
         control_col, summary_col = st.columns([1, 2])
         with control_col:
@@ -3062,7 +3094,7 @@ def main() -> None:
                 reset_bracket_builder_state()
                 st.rerun()
         with summary_col:
-            st.metric("Knockout Tree Entries", len(round_of_32))
+            st.metric("Knockout Tree Entries (Live Data)", len(round_of_32))
 
         with st.expander("Round of 32 Matchups", expanded=True):
             r32_winners = render_bracket_builder_round(
