@@ -2058,64 +2058,173 @@ def render_bracket_builder_round(
     team_states: Mapping[str, TeamState],
     team_lookup: Mapping[str, str],
 ) -> List[str]:
-    """Render knockout dropdowns pre-populated with AI smart defaults."""
-
+    """Render knockout matches with probabilities, xG, and scorelines."""
     synchronize_builder_round_state(state_key, teams)
     winner_slots = list(st.session_state[state_key])
     match_count = len(teams) // 2
 
-    columns = st.columns(2)
+    st.caption(f"🏆 {round_name} — {match_count} Fixtures Loaded")
+
     for match_index in range(match_count):
         team_a = teams[match_index * 2]
         team_b = teams[match_index * 2 + 1]
-
         if team_a == "?" or team_b == "?":
             winner_slots[match_index] = None
             continue
 
-        prediction_frame = build_prediction_frame(
+        pred_frame = build_prediction_frame(
             team_a,
             team_b,
             team_states,
             team_lookup,
+            ground="Unknown Stadium",
         )
-        probabilities = probability_by_class(model, prediction_frame)
-        team_a_win = probabilities.get(2, 0.5)
-        team_b_win = probabilities.get(0, 0.5)
-        decisive_total = team_a_win + team_b_win or 1.0
+        probabilities = probability_by_class(model, pred_frame)
 
-        ai_predicted_winner = team_a if team_a_win >= team_b_win else team_b
+        team_a_win = probabilities.get(2, 0.0)
+        draw = probabilities.get(1, 0.0)
+        team_b_win = probabilities.get(0, 0.0)
+
+        ai_favorite = team_a if team_a_win >= team_b_win else team_b
         if winner_slots[match_index] is None:
-            winner_slots[match_index] = ai_predicted_winner
+            winner_slots[match_index] = ai_favorite
 
-        options = (team_a, team_b)
-        selected_index = (
-            options.index(winner_slots[match_index])
-            if winner_slots[match_index] in options
-            else 0
+        team_a_elo = float(pred_frame.iloc[0]["team1_elo_rating"])
+        team_b_elo = float(pred_frame.iloc[0]["team2_elo_rating"])
+        is_neutral = bool(pred_frame.iloc[0]["is_neutral"])
+
+        exp_score_a = 1.0 / (
+            1.0 + math.pow(10.0, (team_b_elo - team_a_elo) / 400.0)
         )
-        option_labels = {
-            team_a: f"{team_a} ({(team_a_win / decisive_total) * 100:.1f}%)",
-            team_b: f"{team_b} ({(team_b_win / decisive_total) * 100:.1f}%)",
-        }
+        lambda_a = 2.7 * exp_score_a
+        lambda_b = 2.7 * (1.0 - exp_score_a)
+        if not is_neutral:
+            lambda_a += 0.25
+            lambda_b = max(0.1, lambda_b - 0.15)
 
-        with columns[match_index % 2]:
-            st.markdown(f"**Match {match_index + 1}: {team_a} vs {team_b}**")
-            selection = st.selectbox(
-                f"Winner Selection for Match {match_index + 1}",
-                options,
-                index=selected_index,
-                format_func=lambda option, labels=option_labels: labels.get(
-                    option,
-                    option,
-                ),
-                key=(
-                    f"{state_key}_{match_index}_"
-                    f"{normalize_team_name(team_a)}_{normalize_team_name(team_b)}"
-                ),
-                label_visibility="collapsed",
+        max_goals = 6
+        score_matrix = np.zeros((max_goals, max_goals))
+        score_rankings: List[Tuple[float, str]] = []
+        for team_a_goals in range(max_goals):
+            for team_b_goals in range(max_goals):
+                probability = (
+                    poisson_probability(team_a_goals, lambda_a)
+                    * poisson_probability(team_b_goals, lambda_b)
+                    * 100.0
+                )
+                score_matrix[team_a_goals, team_b_goals] = probability
+                score_rankings.append(
+                    (probability, f"{team_a_goals} - {team_b_goals}")
+                )
+        score_rankings.sort(key=lambda item: item[0], reverse=True)
+
+        with st.container():
+            st.markdown(
+                f"""
+                <div style='background:rgba(30, 58, 138, 0.2);
+                            border-left:4px solid #fbbf24;
+                            padding:12px 16px;border-radius:8px;
+                            margin-top:14px;margin-bottom:4px;'>
+                    <span style='color:#94a3b8;font-size:11px;
+                                 font-weight:700;'>MATCH {match_index + 1}</span>
+                    <h4 style='margin:2px 0;color:#f1f5f9;font-size:16px;'>
+                        {team_a} vs {team_b}
+                    </h4>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
-            winner_slots[match_index] = selection
+
+            selection_column, stats_column = st.columns([1, 2])
+            with selection_column:
+                options = (team_a, team_b)
+                selected_index = (
+                    options.index(winner_slots[match_index])
+                    if winner_slots[match_index] in options
+                    else 0
+                )
+                selection = st.selectbox(
+                    f"Pick Winner Match {match_index + 1}",
+                    options,
+                    index=selected_index,
+                    key=(
+                        f"{state_key}_{match_index}_"
+                        f"{normalize_team_name(team_a)}_"
+                        f"{normalize_team_name(team_b)}"
+                    ),
+                    label_visibility="collapsed",
+                )
+                winner_slots[match_index] = selection
+
+            with stats_column:
+                st.markdown(
+                    f"""
+                    <div style='display:flex;justify-content:space-between;
+                                background:rgba(15, 23, 42, 0.4);
+                                padding:10px 14px;border-radius:10px;
+                                border:1px solid rgba(255,255,255,0.05);
+                                font-size:13px;gap:8px;flex-wrap:wrap;'>
+                        <span style='color:#6ee7b7;'>
+                            <b>{team_a}:</b> {team_a_win * 100:.1f}%
+                        </span>
+                        <span style='color:#93c5fd;'>
+                            <b>Draw:</b> {draw * 100:.1f}%
+                        </span>
+                        <span style='color:#f472b6;'>
+                            <b>{team_b}:</b> {team_b_win * 100:.1f}%
+                        </span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+            with st.expander(
+                f"📊 Ver análisis de goles y marcadores para {team_a} vs {team_b}"
+            ):
+                xg_column, score_column = st.columns([1, 1])
+                with xg_column:
+                    st.markdown("**Goles Esperados (xG Model):**")
+                    st.caption(f"⚽ {team_a}: **{lambda_a:.2f}** expected goals")
+                    st.caption(f"⚽ {team_b}: **{lambda_b:.2f}** expected goals")
+                with score_column:
+                    st.markdown("**Top 3 Marcadores Más Probables:**")
+                    for probability, scoreline in score_rankings[:3]:
+                        st.markdown(
+                            "• "
+                            f"<span style='color:#fbbf24;font-weight:700;'>"
+                            f"{scoreline}</span> ({probability:.1f}%)",
+                            unsafe_allow_html=True,
+                        )
+
+                heatmap = go.Figure(
+                    data=go.Heatmap(
+                        z=score_matrix,
+                        x=[f"{goals} Goals" for goals in range(max_goals)],
+                        y=[f"{goals} Goals" for goals in range(max_goals)],
+                        colorscale="Viridis",
+                        hovertemplate=(
+                            f"<b>{team_a}</b>: %{{y}}<br>"
+                            f"<b>{team_b}</b>: %{{x}}<br>"
+                            "Probability: %{z:.2f}%<extra></extra>"
+                        ),
+                        showscale=True,
+                    )
+                )
+                heatmap.update_layout(
+                    height=320,
+                    margin={"l": 20, "r": 20, "t": 10, "b": 20},
+                    paper_bgcolor="#0f172a",
+                    plot_bgcolor="#0f172a",
+                    font={"color": "#94a3b8", "family": "Inter, sans-serif"},
+                    xaxis={"showgrid": False, "zeroline": False},
+                    yaxis={"showgrid": False, "zeroline": False},
+                )
+                st.plotly_chart(heatmap, use_container_width=True)
+
+            st.markdown(
+                "<div style='margin-bottom:10px;'></div>",
+                unsafe_allow_html=True,
+            )
 
     st.session_state[state_key] = winner_slots
     return [winner for winner in winner_slots if winner]
