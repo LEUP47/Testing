@@ -522,43 +522,46 @@ def fetch_public_url(url: str) -> requests.Response:
     show_spinner="Downloading 2026 World Cup fixture data...",
 )
 def load_world_cup_2026_schedule() -> pd.DataFrame:
-    """Fetch and deeply unpack the 2026 World Cup fixture list."""
+    """Fetch and deeply unpack the 2026 World Cup fixture list with scores."""
 
     response = fetch_public_url(WORLD_CUP_2026_URL)
     payload = response.json()
 
-    all_matches: List[Dict[str, Optional[str]]] = []
+    all_matches: List[Dict[str, object]] = []
+
+    def extract_match_fields(
+        match_dict: Mapping[str, object],
+        round_name: str,
+    ) -> Dict[str, object]:
+        return {
+            "date": match_dict.get("date"),
+            "group": match_dict.get("group", match_dict.get("round", round_name)),
+            "team1": match_dict.get("team1"),
+            "team2": match_dict.get("team2"),
+            "ground": match_dict.get("venue", match_dict.get("ground")),
+            "score1": match_dict.get("score1"),
+            "score2": match_dict.get("score2"),
+        }
+
     if "rounds" in payload:
         for round_data in payload["rounds"]:
-            group_name = round_data.get("name", "Unknown Round")
+            round_name = round_data.get("name", "Unknown Round")
             for match in round_data.get("matches", []):
-                all_matches.append(
-                    {
-                        "date": match.get("date"),
-                        "group": group_name,
-                        "team1": match.get("team1"),
-                        "team2": match.get("team2"),
-                        "ground": match.get("venue", match.get("ground")),
-                    }
-                )
+                all_matches.append(extract_match_fields(match, str(round_name)))
     elif "matches" in payload:
         for match in payload["matches"]:
-            all_matches.append(
-                {
-                    "date": match.get("date"),
-                    "group": match.get("group", match.get("round", "Unknown Round")),
-                    "team1": match.get("team1"),
-                    "team2": match.get("team2"),
-                    "ground": match.get("ground", match.get("venue")),
-                }
-            )
+            all_matches.append(extract_match_fields(match, "Unknown Round"))
 
     schedule = pd.DataFrame(all_matches)
     if schedule.empty:
-        return pd.DataFrame(columns=["date", "group", "team1", "team2", "ground"])
+        return pd.DataFrame(
+            columns=["date", "group", "team1", "team2", "ground", "score1", "score2"]
+        )
 
     schedule["ground"] = schedule["ground"].fillna("Unknown Stadium")
     schedule["date"] = pd.to_datetime(schedule["date"])
+    schedule["score1"] = pd.to_numeric(schedule["score1"], errors="coerce")
+    schedule["score2"] = pd.to_numeric(schedule["score2"], errors="coerce")
     return schedule
 
 
@@ -871,7 +874,7 @@ def prepare_group_stage_matches(
     schedule: pd.DataFrame,
     display_lookup: Mapping[str, str],
 ) -> pd.DataFrame:
-    """Resolve and filter the 2026 schedule down to group-stage matches."""
+    """Resolve and filter group-stage matches with optional live scores."""
 
     resolved_schedule = schedule.copy()
     resolved_schedule["team1_resolved"] = resolved_schedule["team1"].apply(
@@ -888,9 +891,9 @@ def prepare_group_stage_matches(
 
     group_matches["team1"] = group_matches["team1_resolved"]
     group_matches["team2"] = group_matches["team2_resolved"]
-    return group_matches[["date", "group", "team1", "team2", "ground"]].reset_index(
-        drop=True
-    )
+    return group_matches[
+        ["date", "group", "team1", "team2", "ground", "score1", "score2"]
+    ].reset_index(drop=True)
 
 
 def serialize_tournament_team_states(
@@ -1003,12 +1006,14 @@ def build_group_simulation_inputs(
     group_matches: pd.DataFrame,
     team_states: Mapping[str, TeamState],
 ) -> Tuple[
-    Tuple[Tuple[str, str, str, bool, str], ...],
+    Tuple[Tuple[str, str, str, bool, str, Optional[float], Optional[float]], ...],
     Dict[str, Dict[str, float]],
 ]:
-    """Precompute immutable group fixture records and standings templates."""
+    """Precompute immutable group records with optional live scores."""
 
-    group_records: List[Tuple[str, str, str, bool, str]] = []
+    group_records: List[
+        Tuple[str, str, str, bool, str, Optional[float], Optional[float]]
+    ] = []
     standings_template: Dict[str, Dict[str, float]] = {}
 
     for match in group_matches.itertuples(index=False):
@@ -1017,7 +1022,21 @@ def build_group_simulation_inputs(
         team2 = str(match.team2)
         ground = str(match.ground)
         is_neutral = infer_neutrality(team1, ground)
-        group_records.append((group_name, team1, team2, is_neutral, ground))
+        score1 = match.score1 if hasattr(match, "score1") else None
+        score2 = match.score2 if hasattr(match, "score2") else None
+        score1_value = float(score1) if pd.notna(score1) else None
+        score2_value = float(score2) if pd.notna(score2) else None
+        group_records.append(
+            (
+                group_name,
+                team1,
+                team2,
+                is_neutral,
+                ground,
+                score1_value,
+                score2_value,
+            )
+        )
 
         standings_template.setdefault(group_name, {})
         standings_template[group_name].setdefault(team1, team_states[team1].elo)
@@ -1027,29 +1046,35 @@ def build_group_simulation_inputs(
 
 
 def simulate_group_phase(
-    group_records: Tuple[Tuple[str, str, str, bool, str], ...],
+    group_records: Tuple[
+        Tuple[str, str, str, bool, str, Optional[float], Optional[float]],
+        ...,
+    ],
     standings_template: Mapping[str, Mapping[str, float]],
     probability_cache: Mapping[Tuple[str, str, bool, str], np.ndarray],
     class_labels: np.ndarray,
     deterministic: bool = False,
 ) -> List[Dict[str, float | str | int]]:
-    """Simulate the 72 group matches and return 32 qualified teams."""
+    """Simulate group matches, overriding predictions with live scores."""
 
     standings = {
         group_name: {team: [0.0, elo] for team, elo in group_teams.items()}
         for group_name, group_teams in standings_template.items()
     }
 
-    for group_name, team1, team2, is_neutral, ground in group_records:
-        result = sample_match_result(
-            team1,
-            team2,
-            is_neutral,
-            ground,
-            probability_cache,
-            class_labels,
-            deterministic=deterministic,
-        )
+    for group_name, team1, team2, is_neutral, ground, score1, score2 in group_records:
+        if score1 is not None and score2 is not None:
+            result = 2 if score1 > score2 else (1 if score1 == score2 else 0)
+        else:
+            result = sample_match_result(
+                team1,
+                team2,
+                is_neutral,
+                ground,
+                probability_cache,
+                class_labels,
+                deterministic=deterministic,
+            )
 
         if result == 2:
             standings[group_name][team1][0] += 3.0
@@ -3018,16 +3043,13 @@ def main() -> None:
         )
         st.markdown(
             "<p style='color:#64748b;font-size:13px;margin-top:0;font-family:Inter,sans-serif;'>"
-            "Start from a deterministic group-stage projection, then manually pick every "
-            "knockout winner with model probabilities beside each matchup.</p>",
+            "El sistema ha cargado los resultados reales desde internet. Elige manualmente el destino "
+            "de las eliminatorias con probabilidades de asistencia calculadas en tiempo real.</p>",
             unsafe_allow_html=True,
         )
 
         initialize_bracket_builder_state()
-        team_state_records = serialize_tournament_team_states(
-            team_states,
-            team_lookup,
-        )
+        team_state_records = serialize_tournament_team_states(team_states, team_lookup)
         round_of_32 = build_deterministic_round_of_32(
             group_stage_matches,
             team_state_records,
@@ -3040,29 +3062,9 @@ def main() -> None:
                 reset_bracket_builder_state()
                 st.rerun()
         with summary_col:
-            st.metric("Baseline qualifiers", len(round_of_32))
-            st.caption(
-                "Round of 32 seeding follows the official 2026 bracket map."
-            )
+            st.metric("Knockout Tree Entries", len(round_of_32))
 
-        with st.expander("Fase de Grupos: Deterministic Round of 32", expanded=True):
-            st.caption(
-                "These 32 teams are produced by deterministic group simulation "
-                "and then seeded into the official knockout architecture."
-            )
-            r32_preview = pd.DataFrame(
-                [
-                    {
-                        "Match": index // 2 + 1,
-                        "Team": team,
-                        "Side": "Left" if index < 16 else "Right",
-                    }
-                    for index, team in enumerate(round_of_32)
-                ]
-            )
-            st.dataframe(r32_preview, use_container_width=True, hide_index=True)
-
-        with st.expander("Round of 32", expanded=True):
+        with st.expander("Round of 32 Matchups", expanded=True):
             r32_winners = render_bracket_builder_round(
                 "Round of 32",
                 round_of_32,
@@ -3073,7 +3075,7 @@ def main() -> None:
             )
 
         if len(r32_winners) == 16:
-            with st.expander("Round of 16", expanded=True):
+            with st.expander("Round of 16 Matchups", expanded=True):
                 r16_winners = render_bracket_builder_round(
                     "Round of 16",
                     r32_winners,
@@ -3117,7 +3119,7 @@ def main() -> None:
                 st.info("Complete all Quarterfinal picks to unlock the Semifinals.")
 
         if len(sf_winners) == 2:
-            with st.expander("Final", expanded=True):
+            with st.expander("Grand Final", expanded=True):
                 final_winner = render_bracket_builder_round(
                     "Final",
                     sf_winners,
@@ -3129,7 +3131,11 @@ def main() -> None:
         else:
             final_winner = []
             if sf_winners:
-                st.info("Complete both Semifinal picks to unlock the Final.")
+                st.info("Complete both Semifinal picks to unlock the Grand Final.")
+
+        if len(final_winner) == 1:
+            st.markdown("---")
+            st.metric("🏆 Manual Bracket Champion", final_winner[0])
 
         padded_r16 = r32_winners + ["?"] * (16 - len(r32_winners))
         padded_qf = r16_winners + ["?"] * (8 - len(r16_winners))
@@ -3145,10 +3151,6 @@ def main() -> None:
             "Finalists": padded_finalists,
             "Champion": padded_champion,
         }
-
-        if len(final_winner) == 1:
-            st.markdown("---")
-            st.metric("Manual Bracket Champion", final_winner[0])
 
         render_plotly_bracket(manual_bracket_data)
 
