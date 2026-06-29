@@ -2058,79 +2058,67 @@ def render_bracket_builder_round(
     team_states: Mapping[str, TeamState],
     team_lookup: Mapping[str, str],
 ) -> List[str]:
-    """Render one interactive manual bracket round and return selected winners."""
+    """Render knockout dropdowns pre-populated with AI smart defaults."""
 
     synchronize_builder_round_state(state_key, teams)
     winner_slots = list(st.session_state[state_key])
     match_count = len(teams) // 2
 
-    st.caption(f"{match_count} matchups")
-    matchup_columns = st.columns(2)
+    columns = st.columns(2)
     for match_index in range(match_count):
         team_a = teams[match_index * 2]
         team_b = teams[match_index * 2 + 1]
+
+        if team_a == "?" or team_b == "?":
+            winner_slots[match_index] = None
+            continue
+
         prediction_frame = build_prediction_frame(
             team_a,
             team_b,
             team_states,
             team_lookup,
-            ground="Unknown Stadium",
         )
         probabilities = probability_by_class(model, prediction_frame)
         team_a_win = probabilities.get(2, 0.5)
         team_b_win = probabilities.get(0, 0.5)
-        draw = probabilities.get(1, 0.0)
-        decisive_total = team_a_win + team_b_win
-        if decisive_total > 0:
-            team_a_advancement = team_a_win / decisive_total
-            team_b_advancement = team_b_win / decisive_total
-        else:
-            team_a_advancement = 0.5
-            team_b_advancement = 0.5
+        decisive_total = team_a_win + team_b_win or 1.0
 
-        pending_option = "Select winner"
-        options = (pending_option, team_a, team_b)
-        current_selection = winner_slots[match_index]
+        ai_predicted_winner = team_a if team_a_win >= team_b_win else team_b
+        if winner_slots[match_index] is None:
+            winner_slots[match_index] = ai_predicted_winner
+
+        options = (team_a, team_b)
         selected_index = (
-            options.index(current_selection)
-            if current_selection in options
+            options.index(winner_slots[match_index])
+            if winner_slots[match_index] in options
             else 0
         )
         option_labels = {
-            pending_option: "Select winner",
-            team_a: f"{team_a} ({team_a_advancement * 100:.1f}%)",
-            team_b: f"{team_b} ({team_b_advancement * 100:.1f}%)",
+            team_a: f"{team_a} ({(team_a_win / decisive_total) * 100:.1f}%)",
+            team_b: f"{team_b} ({(team_b_win / decisive_total) * 100:.1f}%)",
         }
 
-        with matchup_columns[match_index % 2]:
+        with columns[match_index % 2]:
             st.markdown(f"**Match {match_index + 1}: {team_a} vs {team_b}**")
             selection = st.selectbox(
-                "Winner",
+                f"Winner Selection for Match {match_index + 1}",
                 options,
                 index=selected_index,
-                key=(
-                    f"{state_key}_{match_index}_"
-                    f"{normalize_team_name(team_a)}_{normalize_team_name(team_b)}"
-                ),
                 format_func=lambda option, labels=option_labels: labels.get(
                     option,
                     option,
                 ),
+                key=(
+                    f"{state_key}_{match_index}_"
+                    f"{normalize_team_name(team_a)}_{normalize_team_name(team_b)}"
+                ),
                 label_visibility="collapsed",
             )
-            st.caption(f"Draw model probability: {draw * 100:.1f}%")
-            winner_slots[match_index] = (
-                None if selection == pending_option else selection
-            )
+            winner_slots[match_index] = selection
 
     st.session_state[state_key] = winner_slots
-    selected_winners = [winner for winner in winner_slots if winner]
-    if len(selected_winners) == match_count:
-        st.success(f"{round_name} complete.")
-    else:
-        st.info(f"Pick {match_count - len(selected_winners)} more winner(s).")
-
-    return selected_winners
+    return [winner for winner in winner_slots if winner]
 
 
 def inject_styles() -> None:
